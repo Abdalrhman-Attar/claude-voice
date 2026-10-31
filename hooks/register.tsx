@@ -453,13 +453,12 @@ export const register: Register = on => {
                     </Text>
                   </Button>
                 </Box>
-                <Box flexGrow={1} flexShrink={1}>
-                  <Button key={`s${i}`} plain onPress={play(i)}>
-                    <Text color={isLive ? 'green' : undefined} bold={isLive} hover={{ scope: `row${i}`, inverse: true }}>
-                      {s.text}
-                    </Text>
-                  </Button>
-                </Box>
+                {/* Directly in the keyed row, as the pointer's own highlight expects. */}
+                <Button key={`s${i}`} plain onPress={play(i)}>
+                  <Text color={isLive ? 'green' : undefined} bold={isLive} hover={{ scope: `row${i}`, inverse: true }}>
+                    {s.text}
+                  </Text>
+                </Button>
               </Box>
             )
           })}
