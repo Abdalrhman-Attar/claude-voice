@@ -49,6 +49,25 @@ Then, in Claude Code:
 
 Open the pane with `/speak` (it opens by itself in a terminal 144 columns or wider).
 
+## Other agents
+
+The same voice can read replies from Codex, Gemini CLI and Cursor, and any MCP client can call it. Every agent shares one queue, so they take turns instead of talking over each other, each introduced as "From Codex in my-app" when several are active. Mute, only when away and summaries follow the Speak pane's settings.
+
+```sh
+./install.sh --agents codex,gemini,cursor,mcp     # or any of them; safe to re-run
+```
+
+| Agent | How it hooks in | Reads |
+| --- | --- | --- |
+| Codex | `notify` in `~/.codex/config.toml` | each finished reply |
+| Gemini CLI | `AfterAgent` and `Notification` hooks in `~/.gemini/settings.json` | each reply, and permission prompts when you are away |
+| Cursor | `afterAgentResponse` in `~/.cursor/hooks.json` (Cursor 1.7 or newer) | each reply |
+| Any MCP client | `server/mcp_server.py`, tools `speak` and `stop_speaking` | what the agent chooses to say |
+
+The Speak pane, live speech while typing and per-sentence controls are Claude Code only. Other agents are read once their reply is finished. Code blocks and tables are described, not read, and long replies are cut to their first paragraph when summaries are on.
+
+To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disconnect codex,gemini,cursor` (also done by `--uninstall`).
+
 ## Use
 
 | Key (in the pane) | Does |

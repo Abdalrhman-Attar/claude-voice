@@ -2,6 +2,7 @@
 # Sets up the local Kokoro voice for the speak-pane Claude Code plugin (macOS and Linux;
 # Windows: install.ps1). Apple Silicon and Intel Macs, x86_64 and arm64 Linux.
 #   ./install.sh            Python environment, models, start at login, ctrl+x s shortcut
+#   ./install.sh --agents codex,gemini,cursor,mcp   also read other agents' replies aloud
 #   ./install.sh --uninstall
 set -euo pipefail
 
@@ -55,4 +56,4 @@ else
   "$VENV_PY" -m pip install -q -r "$REPO/server/requirements.txt"
 fi
 
-"$VENV_PY" "$REPO/server/install_helper.py" install
+"$VENV_PY" "$REPO/server/install_helper.py" install "$@"

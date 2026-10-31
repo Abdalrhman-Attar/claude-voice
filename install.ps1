@@ -1,7 +1,8 @@
 # Sets up the local Kokoro voice for the speak-pane Claude Code plugin on Windows (x64 and ARM64).
 #   powershell -ExecutionPolicy Bypass -File install.ps1             install
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Agents codex,gemini,cursor,mcp
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
-param([switch]$Uninstall)
+param([switch]$Uninstall, [string]$Agents = '')
 $ErrorActionPreference = 'Stop'
 
 $Repo = $PSScriptRoot
@@ -42,4 +43,4 @@ if (-not (Test-Path $VenvPy)) {
 & $VenvPy -m pip install -q -r (Join-Path $Repo 'server\requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 
-& $VenvPy $Helper install
+if ($Agents) { & $VenvPy $Helper install --agents $Agents } else { & $VenvPy $Helper install }
