@@ -2,7 +2,7 @@
 # Second half of install.sh / install.ps1, run with the voice's own Python environment:
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
 #   install_helper.py install [--agents codex,gemini,cursor,mcp] [--arabic] | uninstall
-#   install_helper.py arabic         adds the Arabic voice (about 230 MB)
+#   install_helper.py arabic         adds the Arabic voice (about 250 MB)
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
 import json, os, shutil, ssl, subprocess, sys, urllib.request
 
