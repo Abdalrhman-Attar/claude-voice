@@ -18,4 +18,11 @@ assert arabic.WORDS.findall("عندي 3 ملفات، جديدة؟") == ["عند�
 assert "،؛؟".translate(arabic.PUNCTUATION) == ",;?"
 assert [s for s, _, _ in markdown.to_sentences("مرحبا بك. هل تريد المتابعة؟ نعم")] == [
     "مرحبا بك.", "هل تريد المتابعة؟", "نعم"]
+# Read aloud: case endings become a sukun, connecting alifs go silent after a vowel, particles stay.
+read = arabic.reading
+assert read("بِاللُّغَةِ الْعَرَبِيَّةِ.") == "بِٱللُّغَهْ الْعَرَبِيَّهْ.", read("بِاللُّغَةِ الْعَرَبِيَّةِ.")
+assert read("فِي الْخَادِمِ") == "فِي ٱلْخَادِمْ"
+assert read("صَوْتُكَ الْجَدِيدُ") == "صَوْتُكْ الْجَدِيدْ"  # after a consonant the article is said
+assert read("ثُمَّ أَعِدْ") == "ثُمَّ أَعِدْ"
+assert read("إلَى") == "إِلَى"
 print("arabic: all checks pass")

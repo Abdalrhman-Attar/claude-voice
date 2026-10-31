@@ -18,6 +18,24 @@ RATE = 24000
 MAX_TOKENS = 508  # the voice pack has a style row for up to 510, with the two ends
 # Arabic letters only: CATT drops anything else, so punctuation and digits stay outside its runs.
 WORDS = re.compile(r"[ء-غف-يٱً-ْٰ]+(?:\s+[ء-غف-يٱً-ْٰ]+)*")
+LETTER = "\u0621-\u063A\u0641-\u064A"
+MARKS = "\u064B-\u0652\u0670"
+END = "(?=\\s|[.,;:!?\u060C\u061B\u061F]|$)"
+# A connecting alif (hamzat al-wasl): a bare ا before the article or a vowelless letter, after a
+# vowelled prefix (بِ، وَ) or a long vowel. It is silent there, but espeak says it ("bi-aa-llugha");
+# written as ٱ it is skipped ("billugha").
+WASL_NEXT = f"(?=[{LETTER}]\u0652|\u0644[{LETTER}][{MARKS}]*\u0651|\u0644\u0652)"
+WASL_AFTER_VOWEL = re.compile("(?<=[\u064E\u064F\u0650])\u0627" + WASL_NEXT)
+# After a word, only a long vowel carries over ("fī l-khādim"); after a consonant, which a word
+# ends in once its case ending is dropped, the alif is said ("ṣawtuk al-jadīd").
+WASL_AFTER_WORD = re.compile("(?:(?<=[\u0627\u0649\u064A\u0648] )|(?<=[\u0627\u0649\u064A\u0648]\u0652 ))\u0627" + WASL_NEXT)
+# A word's last vowel is its grammatical case ending, the mark the diacritizer gets wrong most
+# often; it is dropped (as most people read aloud), along with the -n of tanween, for a sukun.
+CASE_ENDING = re.compile(f"[\u064B-\u0650\u0652]+{END}")
+TAA_AT_END = re.compile(f"\u0629\u0652?{END}")
+# Words whose last vowel is part of the word, not a case ending: "thumma", not "thumm".
+FIXED_ENDINGS = {"ثم", "هو", "هي", "أن", "إن", "لكن", "كأن", "ليت", "لعل", "حيث", "منذ", "أين", "كيف", "ليس", "ليست"}
+BARE_HAMZA_BELOW = re.compile(f"\u0625(?![{MARKS}])")  # إ is always "ʔi"; espeak drops it without its kasra
 PUNCTUATION = str.maketrans({"\u060C": ",", "\u061B": ";", "\u061F": "?"})
 _lock = threading.Lock()
 _model = None
@@ -103,11 +121,12 @@ class Model:
         p = re.sub(r"(?<=\S)\.(?=\S)", "", p)  # espeak's syllable dots would be heard as pauses
         for mark in "̪ˤ[]{}":
             p = p.replace(mark, "")
+        p = re.sub(r"([^\Wːˈˌ])\1\1+", r"\1\1", p)  # "ʔannnusχa": a doubled letter is two, never three
         return p.strip()
 
     def say(self, text, speed, voice):
         np = self.np
-        vowelled = WORDS.sub(lambda m: self.vowels(m.group(0)), text)
+        vowelled = reading(WORDS.sub(lambda m: self.vowels(m.group(0)), text))
         ids = [self.vocab[c] for c in self.phonemes(vowelled) if c in self.vocab][:MAX_TOKENS]
         if not ids:
             return None
@@ -115,6 +134,20 @@ class Model:
                                     "ref_s": self.voices.get(voice, self.voices[OWN_VOICE])[len(ids)].reshape(1, 256),
                                     "speed": np.asarray([speed], dtype=np.float32)})[0]
         return audio.squeeze().astype("float32"), RATE
+
+
+def strip_marks(word):
+    return re.sub(f"[{MARKS}]", "", word).replace("\u0671", "\u0627")
+
+
+def reading(vowelled):
+    """Vowelled text as it is read aloud: connecting alifs silent, words without case endings."""
+    text = WASL_AFTER_WORD.sub("\u0671", WASL_AFTER_VOWEL.sub("\u0671", vowelled))
+    text = BARE_HAMZA_BELOW.sub("\u0625\u0650", text)
+    # A sukun, else espeak adds a vowel of its own ("ṣawtuka"); particles keep their fixed vowel.
+    text = re.sub(f"[{LETTER}{MARKS}\u0671]+", lambda m: m.group(0) if strip_marks(m.group(0)) in FIXED_ENDINGS
+                  else CASE_ENDING.sub("\u0652", m.group(0)), text)
+    return TAA_AT_END.sub("\u0647\u0652", text)  # ـة without its ending is said "-ah"
 
 
 def synth(text, speed, voice=OWN_VOICE):
