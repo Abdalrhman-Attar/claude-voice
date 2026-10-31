@@ -4,3 +4,5 @@ node_modules/**
 tsconfig.json
 *.vsix
 dev/**
+test/run.js test/suite.js
+.vscode-test/vscode-darwin-arm64-1.144.0

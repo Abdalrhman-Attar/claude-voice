@@ -4,3 +4,5 @@ bundle/
 *.vsix
 LICENSE
 dev/
+.vscode-test/
+test/results.txt

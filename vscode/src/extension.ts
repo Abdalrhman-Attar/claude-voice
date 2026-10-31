@@ -144,6 +144,7 @@ class Store {
 
 class RepliesView implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView
+  panelReady = false // the panel's script ran and asked for state
 
   constructor(
     private readonly extension: vscode.Uri,
@@ -180,10 +181,11 @@ class RepliesView implements vscode.WebviewViewProvider {
     })
   }
 
-  private receive(msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) {
+  receive(msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) {
     const reply = this.store.replies.find(r => r.id === msg.id && r.session === msg.session)
     switch (msg.type) {
       case 'ready':
+        this.panelReady = true
         return this.push()
       case 'play':
         return reply && this.voice.play(reply, msg.index ?? 0, false)
@@ -216,7 +218,16 @@ function statusText(store: Store): { text: string; tooltip: string } {
   return { text: '$(unmute)', tooltip: 'Claude Voice: click to show replies.' }
 }
 
-export function activate(context: vscode.ExtensionContext) {
+// What the extension exposes to its integration tests.
+export type Api = {
+  panelReady: () => boolean
+  statusText: () => string
+  replies: () => number
+  latest: () => Reply | undefined
+  panelMessage: (msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) => unknown
+}
+
+export function activate(context: vscode.ExtensionContext): Api {
   const server = path.join(context.extensionPath, 'bundle', 'server')
   const voice = new Voice(server)
   const store = new Store()
@@ -262,6 +273,14 @@ export function activate(context: vscode.ExtensionContext) {
       )
     }),
   )
+
+  return {
+    panelReady: () => view.panelReady,
+    statusText: () => bar.text,
+    replies: () => store.replies.length,
+    latest,
+    panelMessage: msg => view.receive(msg),
+  }
 }
 
 export function deactivate() {}
