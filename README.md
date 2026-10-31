@@ -2,6 +2,10 @@
 
 Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a natural-sounding voice that runs entirely on your computer. No account, no API key, nothing leaves your machine.
 
+![The Speak pane highlighting each sentence as it is read aloud](docs/demo.gif)
+
+<sub>The GIF has no sound: each sentence turns green as the voice reads it.</sub>
+
 - **Speaks while it types.** Each sentence is read as soon as it is written.
 - **Speak pane.** Every reply as a list of sentences: play one, read from any line on, pause, skip, stop, switch between replies, reload the whole chat.
 - **Live highlight.** The sentence being spoken turns green.
