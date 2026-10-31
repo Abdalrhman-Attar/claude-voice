@@ -408,31 +408,31 @@ CACHE_ITEMS = 160  # sentences kept ready to play again (a few MB)
 cache = OrderedDict()
 
 
-def synth(said, voice, speed):
+def synth(said, voice, speed, arabic=arabic_voice.OWN_VOICE):
     """A sentence's audio at the device rate, from the cache when it was made before."""
-    key = (said, voice, speed)
+    key = (said, voice, speed, arabic)
     with model_lock:
         hit = cache.get(key)
         if hit is not None:
             cache.move_to_end(key)
             return hit
-        audio = np.concatenate([master(*made) for made in voices_for(said, voice, speed)] or [np.zeros(0, "float32")])
+        audio = np.concatenate([master(*made) for made in voices_for(said, voice, speed, arabic)] or [np.zeros(0, "float32")])
         cache[key] = audio
         while len(cache) > CACHE_ITEMS:
             cache.popitem(last=False)
         return audio
 
 
-def voices_for(said, voice, speed):
+def voices_for(said, voice, speed, arabic):
     """(samples, rate) for each piece of a sentence: Kokoro's voice, and for Arabic Nabra's or the system's."""
     out = []
     nabra = arabic_voice.installed()  # reads only Arabic: English words go to Kokoro
-    for text, arabic in system_voice.pieces(said, whole=not nabra):
-        if not arabic:
+    for text, is_arabic in system_voice.pieces(said, whole=not nabra):
+        if not is_arabic:
             out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
             continue
         try:
-            made = arabic_voice.synth(text, speed) if nabra else None
+            made = arabic_voice.synth(text, speed, arabic) if nabra else None
         except Exception as err:
             log("arabic voice error:", err)
             made = None
@@ -504,7 +504,7 @@ class Job:
                 continue
             conf = settings()  # per sentence, so a voice or speed change applies right away
             try:
-                audio = synth(said, voice_for(conf, self.label), float(conf["speed"]))
+                audio = synth(said, voice_for(conf, self.label), float(conf["speed"]), str(conf.get("arabicVoice") or arabic_voice.OWN_VOICE))
             except Exception as err:
                 log("tts error:", err)
                 continue

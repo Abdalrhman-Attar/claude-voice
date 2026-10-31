@@ -95,8 +95,17 @@ async function loadSettings($: EngineInterface): Promise<SpeakSettings> {
 }
 
 async function saveSettings($: EngineInterface, change: Partial<SpeakSettings>) {
+  const file = (await paths($)).settings
+  // Settings this pane does not show (the Arabic voice, for one) are kept as they are.
+  let others: Record<string, unknown> = {}
+  try {
+    const raw: unknown = JSON.parse((await $.fs.read(file).catch(() => undefined)) ?? '{}')
+    if (typeof raw === 'object' && raw !== null) others = raw as Record<string, unknown>
+  } catch {
+    // unreadable: rewritten from the pane's own settings
+  }
   const next = { ...(await loadSettings($)), ...change }
-  await $.fs.write((await paths($)).settings, JSON.stringify(next, null, 2))
+  await $.fs.write(file, JSON.stringify({ ...others, ...next }, null, 2))
   await update($, prefs, () => next)
 }
 

@@ -6,6 +6,11 @@
     'af_heart', 'af_bella', 'af_nicole', 'af_sky', 'af_sarah', 'af_nova',
     'am_michael', 'am_adam', 'am_fenrir', 'am_puck', 'bf_emma', 'bf_isabella', 'bm_george', 'bm_lewis',
   ]
+  // Nabra's own voice first; Kokoro's voices also work with it (Nabra is a Kokoro fine-tune).
+  const ARABIC_VOICES = [
+    ['af_msa', 'Nabra (female)'], ['am_onyx', 'Onyx (male)'], ['am_adam', 'Adam (male)'], ['bm_lewis', 'Lewis (male)'],
+    ['am_michael', 'Michael (male)'], ['af_heart', 'Heart (female)'], ['bf_emma', 'Emma (female)'],
+  ]
   const $ = id => document.getElementById(id)
   const saved = vscode.getState() || {}
   let state = { replies: [], status: {}, settings: {}, muted: false, ready: true }
@@ -239,6 +244,17 @@
       voice.appendChild(o)
     }
     voice.value = typeof c.voice === 'string' ? c.voice : 'af_heart'
+    const arabic = $('arabicVoice')
+    if (!arabic.options.length) {
+      ARABIC_VOICES.forEach(([v, name]) => {
+        const o = document.createElement('option')
+        o.value = v
+        o.textContent = name
+        arabic.appendChild(o)
+      })
+    }
+    arabic.value = ARABIC_VOICES.some(([v]) => v === c.arabicVoice) ? c.arabicVoice : 'af_msa'
+    $('arabicRow').hidden = state.arabic !== true
     voice.disabled = c.projectVoices === true
     voice.title = c.projectVoices === true ? 'Each project has its own voice (Sessions)' : ''
     const speed = typeof c.speed === 'number' ? c.speed : 1.1
@@ -369,6 +385,7 @@
 
   const setting = (k, value) => vscode.postMessage({ type: 'setting', key: k, value })
   $('voice').addEventListener('change', e => setting('voice', e.target.value))
+  $('arabicVoice').addEventListener('change', e => setting('arabicVoice', e.target.value))
   $('speed').addEventListener('input', e => ($('speedOut').textContent = `${Number(e.target.value).toFixed(1)}×`))
   $('speed').addEventListener('change', e => setting('speed', Math.round(Number(e.target.value) * 10) / 10))
   $('autoSpeak').addEventListener('change', e => setting('muted', !e.target.checked))

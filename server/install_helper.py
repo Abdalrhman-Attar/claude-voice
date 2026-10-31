@@ -53,7 +53,7 @@ def download():
 
 
 def arabic():
-    """The Arabic voice (Nabra-82M) and its diacritizer (CATT), about 230 MB."""
+    """The Arabic voice (Nabra-82M) and its diacritizer (CATT), about 250 MB."""
     import zipfile
 
     sys.path.insert(0, CODE)
@@ -63,14 +63,18 @@ def arabic():
     for name, url in voice.FILES.items():
         path = os.path.join(voice.DIR, name)
         if name == "catt.zip":
-            if os.path.exists(os.path.join(voice.DIR, "encoder.onnx")):
+            best = voice.DIACRITIZERS[0]
+            if all(os.path.exists(os.path.join(voice.DIR, f)) for f in best):
                 continue
             fetch(url, path, "the Arabic diacritizer")
             with zipfile.ZipFile(path) as z:
-                for member in ("encoder.onnx", "decoder.onnx"):
-                    with z.open(member) as src, open(os.path.join(voice.DIR, member), "wb") as dst:
+                for member, to in zip(("encoder.onnx", "decoder.onnx"), best):
+                    with z.open(member) as src, open(os.path.join(voice.DIR, to), "wb") as dst:
                         shutil.copyfileobj(src, dst)
             os.remove(path)
+            for old in voice.DIACRITIZERS[1]:  # the encoder-only model it replaces
+                if os.path.exists(os.path.join(voice.DIR, old)):
+                    os.remove(os.path.join(voice.DIR, old))
         elif not os.path.exists(path):
             fetch(url, path, "the Arabic voice" if name.endswith(".onnx") else name)
     print("Arabic voice installed. It is used from the next Arabic sentence.")

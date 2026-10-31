@@ -126,7 +126,7 @@ A word list (`server/pronounce.default.json`, about 100 entries such as RAM, JSO
 
 Kokoro has no Arabic voice, so Arabic is read by one of these, best first:
 
-1. **Nabra**, a neural Arabic voice (Modern Standard Arabic, about 230 MB). Add it with `./install.sh --arabic` (Windows: `install.ps1 -Arabic`), or in VS Code with **Read Aloud: Add the Arabic voice**. Written Arabic leaves out short vowels, so [CATT](https://github.com/abjadai/catt) adds them first; it guesses a word wrong now and then. English words in an Arabic sentence stay in your Kokoro voice.
+1. **Nabra**, a neural Arabic voice (Modern Standard Arabic, about 250 MB). Add it with `./install.sh --arabic` (Windows: `install.ps1 -Arabic`), or in VS Code with **Read Aloud: Add the Arabic voice**. Written Arabic leaves out short vowels, so [CATT](https://github.com/abjadai/catt) (its encoder-decoder model) adds them first; it guesses a word wrong now and then. English words in an Arabic sentence stay in your Kokoro voice. Nabra has one voice of its own (female); because it is a Kokoro fine-tune, Kokoro's voices work with it too, including male ones (Onyx, Adam, Lewis). Pick one under **Arabic voice** in the VS Code panel, or set `"arabicVoice": "am_onyx"` in `~/.claude/kokoro/settings.json`.
 2. Your system's Arabic voice: Majed on macOS, an installed Arabic voice on Windows (Settings, Time & language, Speech), or `espeak-ng` on Linux.
 3. With neither, Arabic text is skipped instead of being read letter by letter.
 

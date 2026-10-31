@@ -47,6 +47,11 @@ function serverDir(bundled: string): string {
 }
 
 // Keeps the stable copy current after an extension update; true when a file changed.
+// The Arabic voice is downloaded: the panel then offers its voice choice.
+function arabicInstalled(): boolean {
+  return fs.existsSync(path.join(home(), 'arabic', 'nabra.onnx'))
+}
+
 function syncApp(bundled: string, app = path.join(home(), 'app')): boolean {
   if (!fs.existsSync(app)) return false
   let changed = false
@@ -240,6 +245,7 @@ class RepliesView implements vscode.WebviewViewProvider {
       folder: (vscode.workspace.workspaceFolders ?? []).map(f => f.name).join(', '),
       ready: this.voice.ready(),
       plugin: pluginInstalled(),
+      arabic: arabicInstalled(),
       setup: this.setup,
     })
   }
@@ -367,7 +373,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   view.onSetup = runSetup
   const addArabic = () =>
     vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Adding the Arabic voice (about 230 MB)' },
+      { location: vscode.ProgressLocation.Notification, title: 'Adding the Arabic voice (about 250 MB)' },
       progress =>
         new Promise<void>(resolve => {
           const helper = path.join(serverDir(server), 'install_helper.py')
@@ -382,7 +388,7 @@ export function activate(context: vscode.ExtensionContext): Api {
           child.stderr.on('data', read)
           child.on('exit', code => {
             void (code === 0
-              ? vscode.window.showInformationMessage('Arabic voice added. Arabic text is read in it from the next sentence.')
+              ? (view.push(), vscode.window.showInformationMessage('Arabic voice added. Arabic text is read in it from the next sentence; pick its voice under Voice.'))
               : vscode.window.showErrorMessage(`Adding the Arabic voice failed: ${out.trim().split('\n').slice(-2).join(' ')}`))
             resolve()
           })
