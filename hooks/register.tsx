@@ -440,20 +440,24 @@ export const register: Register = on => {
 
             return (
               <Box key={`row${i}`} flexDirection="row" marginTop={gap ? 1 : 0} flexShrink={0}>
-                {/* Hovering any part of the row (a keyed Box) lights all three. */}
+                {/* One hover group per row: pointing at any part lights all three. */}
                 <Box width={2} flexShrink={0}>
-                  <Button key={`f${i}`} plain dimColor hover={{ dimColor: false, bold: true }} onPress={playFrom(i)}>
-                    »
+                  <Button key={`f${i}`} plain onPress={playFrom(i)}>
+                    <Text dimColor hover={{ scope: `row${i}`, dimColor: false, bold: true }}>»</Text>
                   </Button>
                 </Box>
                 <Box width={2} flexShrink={0}>
-                  <Button key={`p${i}`} plain hover={{ bold: true }} onPress={play(i)}>
-                    <Text color={isLive ? 'green' : 'cyan'}>{isLive ? '♪' : '▸'}</Text>
+                  <Button key={`p${i}`} plain onPress={play(i)}>
+                    <Text color={isLive ? 'green' : 'cyan'} hover={{ scope: `row${i}`, bold: true }}>
+                      {isLive ? '♪' : '▸'}
+                    </Text>
                   </Button>
                 </Box>
                 <Box flexGrow={1} flexShrink={1}>
-                  <Button key={`s${i}`} plain hover={{ bold: true, underline: true }} onPress={play(i)}>
-                    <Text color={isLive ? 'green' : undefined} bold={isLive}>{s.text}</Text>
+                  <Button key={`s${i}`} plain onPress={play(i)}>
+                    <Text color={isLive ? 'green' : undefined} bold={isLive} hover={{ scope: `row${i}`, inverse: true }}>
+                      {s.text}
+                    </Text>
                   </Button>
                 </Box>
               </Box>
