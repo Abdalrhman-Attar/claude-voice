@@ -1,0 +1,5 @@
+{
+  "name": "claude-voice",
+  "owner": { "name": "Abdalrhman Attar" },
+  "plugins": [{ "name": "speak-pane", "source": "./", "description": "Reads Claude replies aloud with a local Kokoro voice" }]
+}

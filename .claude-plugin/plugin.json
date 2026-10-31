@@ -1,0 +1,13 @@
+{
+  "name": "speak-pane",
+  "version": "0.9.0",
+  "description": "Reads Claude replies aloud with a local Kokoro voice: live while typing, a sentence panel with play, pause, skip and history",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Abdalrhman Attar",
+    "email": "alattarabdalrhman@gmail.com"
+  },
+  "homepage": "https://github.com/Abdalrhman-Attar/claude-voice",
+  "repository": "https://github.com/Abdalrhman-Attar/claude-voice",
+  "license": "MIT"
+}

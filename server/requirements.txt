@@ -1,0 +1,4 @@
+kokoro-onnx==0.6.1
+soundfile
+sounddevice
+numpy
