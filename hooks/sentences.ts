@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: SpeakSettings = {
   awayOnly: false,
   summarize: true,
   live: true,
+  workUpdates: true,
   projectVoices: false,
   mutedUntil: 0,
 }
@@ -183,6 +184,7 @@ export function parseSettings(raw: string | undefined): SpeakSettings {
     awayOnly: typeof v.awayOnly === 'boolean' ? v.awayOnly : d.awayOnly,
     summarize: typeof v.summarize === 'boolean' ? v.summarize : d.summarize,
     live: typeof v.live === 'boolean' ? v.live : d.live,
+    workUpdates: typeof v.workUpdates === 'boolean' ? v.workUpdates : d.workUpdates,
     projectVoices: typeof v.projectVoices === 'boolean' ? v.projectVoices : d.projectVoices,
     mutedUntil: typeof v.mutedUntil === 'number' ? v.mutedUntil : d.mutedUntil,
   }

@@ -7,6 +7,7 @@ export type SpeakSettings = {
   awayOnly: boolean
   summarize: boolean
   live: boolean
+  workUpdates: boolean // speak text between tool calls, not only the final reply
   projectVoices: boolean
   mutedUntil: number // epoch ms; a timed mute holds until then
 }

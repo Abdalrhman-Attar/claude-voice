@@ -48,11 +48,15 @@ def run(cmd, stdin=None):
 
 
 def work(req):
-    """In the detached worker: honours mute and away settings, then hands the request to tts.py."""
+    """In the detached worker: records the reply for the VS Code panel, then, honouring mute and
+    away settings, hands the request to tts.py."""
+    tts = os.path.join(CODE, "tts.py")
+    if req.get("record"):
+        run([sys.executable, tts, "--json"], json.dumps({"mode": "record", "session": req["session"],
+                                                         "label": req["label"], "reply": req.pop("record")}))
     conf = settings()
     if conf.get("muted") or conf.get("mutedUntil", 0) > time.time() * 1000:
         return
-    tts = os.path.join(CODE, "tts.py")
     must_be_away = req.pop("alert", False) or conf.get("awayOnly")
     if must_be_away and run([sys.executable, tts, "--check-away", os.environ.get("__CFBundleIdentifier", "")]).returncode != 0:
         return  # the terminal is in front: the person can see it
@@ -72,8 +76,12 @@ def request(agent, kind, text, session, where):
         sentences = [s for s in sentences if s[1] == first] + [("The rest is on screen.", first + 1, -1)]
     if not sentences:
         return None
-    return {"mode": "reply", "sentences": [s[0] for s in sentences], "pauses": pauses_for(sentences), "ref": None,
-            "session": f"{agent}:{session}", "label": label}
+    ref = f"{agent}:{session}:{int(time.time() * 1000)}"
+    full = to_sentences(text)
+    return {"mode": "reply", "sentences": [s[0] for s in sentences], "pauses": pauses_for(sentences), "ref": ref,
+            "offset": 0, "session": f"{agent}:{session}", "label": label,
+            "record": {"id": ref, "agent": agent,
+                       "sentences": [{"text": t, "para": p, "line": l} for t, p, l in full]}}
 
 
 def detach(req):

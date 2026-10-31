@@ -15,6 +15,8 @@ LEXICON = os.path.join(HOME, "pronounce.json")
 DEFAULT_LEXICON = os.path.join(CODE, "pronounce.default.json")
 SETTINGS = os.path.join(HOME, "settings.json")
 STATUS = os.path.join(HOME, "status.json")
+FEED = os.path.join(HOME, "replies.json")  # recent replies from every agent, for the VS Code panel
+FEED_KEEP = 200
 LOG = os.path.join(HOME, "server.log")
 LOG_KEEP = 300  # lines kept when the log is trimmed
 LOG_MAX_BYTES = 64 * 1024
@@ -462,6 +464,8 @@ class Job:
 #   "urgent": true (with reply) is an alert, such as a permission prompt: it goes to the front of the
 #     queue without cutting off anything, and the same alert is not repeated within ALERT_REPEAT.
 #   "intro": said before the reply, after the "From <project>" label.
+#   record: {"reply": {"id", "sentences": [{"text", "para", "line"}], "agent"}} adds a reply to
+#     replies.json (replacing one with the same id); nothing is said.
 ALERT_REPEAT = 90
 cond = threading.Condition()
 pending = []
@@ -503,7 +507,9 @@ def handle(req):
     with cond:
         if session:
             seen[session] = now
-        if mode == "stop":
+        if mode == "record":
+            record(req)
+        elif mode == "stop":
             if req.get("all"):
                 pending.clear()
                 if current is not None:
@@ -542,6 +548,27 @@ def handle(req):
                     current.cancel()
                 pending.insert(0, req)
         cond.notify_all()
+
+
+def record(req):
+    """Keeps the recent replies of every session and agent in one file; this server is its only writer."""
+    reply = req.get("reply")
+    if not isinstance(reply, dict) or not reply.get("id") or not isinstance(reply.get("sentences"), list):
+        return
+    try:
+        feed = json.load(open(FEED))
+        if not isinstance(feed, list):
+            feed = []
+    except Exception:
+        feed = []
+    entry = {"id": str(reply["id"]), "session": req.get("session", ""), "label": req.get("label", ""),
+             "agent": reply.get("agent", "claude"), "t": time.time(), "sentences": reply["sentences"]}
+    feed = [r for r in feed if not (r.get("id") == entry["id"] and r.get("session") == entry["session"])]
+    feed = (feed + [entry])[-FEED_KEEP:]
+    tmp = FEED + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(feed, f)
+    os.replace(tmp, FEED)
 
 
 def worker():

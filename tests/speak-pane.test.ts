@@ -38,6 +38,7 @@ const OK = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isSt
 
 type Host = {
   sent: Record<string, unknown>[]
+  records: Record<string, unknown>[]
   files: Record<string, string>
   inFront: boolean
   summaries: number
@@ -47,6 +48,7 @@ type Host = {
 function fakeHost(on: On, { history = [] as string[], settings = {}, inFront = false } = {}): Host {
   const host: Host = {
     sent: [],
+    records: [],
     files: { '/home/me/.claude/kokoro/settings.json': JSON.stringify(settings) },
     inFront,
     summaries: 0,
@@ -79,7 +81,8 @@ function fakeHost(on: On, { history = [] as string[], settings = {}, inFront = f
     if (e.argv.includes('--check-away')) {
       return { value: { ...OK, exitCode: host.inFront ? 1 : 0 } }
     }
-    host.sent.push(JSON.parse(e.init?.stdin ?? '{}'))
+    const request = JSON.parse(e.init?.stdin ?? '{}')
+    ;(request.mode === 'record' ? host.records : host.sent).push(request)
     return { value: OK }
   })
 
@@ -215,6 +218,21 @@ test('auto-speaks a finished reply with its sentences', async ($, on) => {
   ])
 })
 
+test('every finished reply is recorded for the VS Code panel, muted or not', async ($, on) => {
+  const host = fakeHost(on, { settings: { muted: true } })
+  await reply($, 'First. Second.')
+  await settle($)
+
+  expect(host.records).toEqual([
+    {
+      mode: 'record',
+      reply: { id: 't1', sentences: [{ text: 'First.', para: 0, line: 0 }, { text: 'Second.', para: 0, line: 0 }] },
+      session: 'sess',
+      label: 'My Project',
+    },
+  ])
+})
+
 test('muted means no auto-speak', async ($, on) => {
   const host = fakeHost(on, { settings: { muted: true } })
   await reply($, 'First.')
@@ -286,6 +304,7 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
       awayOnly: true,
       summarize: true,
       live: true,
+      workUpdates: true,
       projectVoices: false,
       mutedUntil: 0,
     })
@@ -338,10 +357,14 @@ test('sending a message stops this session', async ($, on) => {
 })
 
 // The model's stream for one step, as the engine would raise it beneath the plugin.
-function fakeStream(on: On, pieces: string[], stopReason: 'end_turn' | 'tool_use' = 'end_turn') {
+function fakeStream(on: On, pieces: string[], stopReason: 'end_turn' | 'tool_use' = 'end_turn', steps?: Record<number, string[]>) {
   on('turn.step', async function* (_$, e) {
-    for (const text of pieces) {
+    const these = steps?.[e.index] ?? pieces
+    for (const text of these) {
       yield { kind: 'text', index: 0, text }
+    }
+    if (steps ? e.index < Math.max(...Object.keys(steps).map(Number)) : stopReason === 'tool_use') {
+      yield { kind: 'tool', index: 1, id: `tool${e.index}`, name: 'Bash' }
     }
     return { turnId: e.turnId, index: e.index, answer: pieces.join(''), toolUses: [], stopReason, usage: null }
   })
@@ -471,4 +494,25 @@ test('a long turn ends with All done when away', async ($, on) => {
   await settle($)
 
   expect(host.sent.map(r => r.sentences)).toEqual([['Fixed it.'], ['All done.']])
+})
+
+test('without work updates only the final reply is spoken', async ($, on) => {
+  const host = fakeHost(on, { settings: { workUpdates: false } })
+  fakeStream(on, [], 'end_turn', { 0: ['Let me check the config. '], 1: ['It was the port. Fixed it.'] })
+  await step($, 'tw', 0)
+  await step($, 'tw', 1)
+  await settle($)
+
+  expect(host.sent.map(r => r.sentences)).toEqual([['It was the port.', 'Fixed it.']])
+})
+
+test('a question is said at the terminal too, ahead of other speech', async ($, on) => {
+  const host = fakeHost(on, { inFront: true })
+  on('tool.call', () => ({ result: { content: 'ok' } }))
+  await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'q1', questions: [{ question: 'Which port?', header: 'Port', multiSelect: false, options: [{ label: '80', description: 'http' }, { label: '8080', description: 'dev' }] }] })
+  await settle($)
+
+  expect(host.sent.map(({ session, label, ...r }) => r)).toEqual([
+    { mode: 'reply', urgent: true, sentences: ['I have a question: Which port?', 'Options: 80; 8080.'], ref: null },
+  ])
 })

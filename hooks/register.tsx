@@ -25,6 +25,9 @@ const STOP_ACTION = 'app:toggleDiffPreSession'
 const MAX_REPLIES = 100
 const SUMMARY_OVER = 1200 // chars of plain text; longer replies are summarized when summaries are on
 const POLL_MS = 400
+// Without work updates, a step's text starts speaking once it is this long (a short note before a
+// tool call is never said); otherwise only when the step ends with no tool call.
+const FINAL_HINT_CHARS = 400
 const LONG_TURN_MS = 30000 // a turn this long ends with "All done." when the person is away
 const REMOTE_ROWS = 3 // VS Code and the desktop app fit about this many rows per terminal row
 const VOICES = ['af_heart', 'af_bella', 'af_nicole', 'af_sky', 'am_michael', 'am_adam', 'bf_emma', 'bm_george']
@@ -37,7 +40,8 @@ const playback = atom({ plugin: 'speak-pane', key: 'playback' } as const, IDLE)
 const prefs = atom({ plugin: 'speak-pane', key: 'prefs' } as const, DEFAULT_SETTINGS)
 
 type Request = {
-  mode: 'reply' | 'play' | 'stop' | 'pause' | 'skip'
+  mode: 'reply' | 'play' | 'stop' | 'pause' | 'skip' | 'record'
+  reply?: Reply
   sentences?: string[]
   pauses?: number[]
   ref?: string | null
@@ -48,7 +52,7 @@ type Request = {
 }
 
 // Turns being read aloud while they stream: whether to speak them, and what was sent.
-type LiveTurn = { speak: Promise<boolean>; lastStep: number; sent: Promise<void> }
+type LiveTurn = { speak: Promise<boolean>; lastStep: number; sent: Promise<void>; workUpdates: boolean }
 const liveTurns = new Map<string, LiveTurn>()
 
 type Paths = { python: string; tts: string; history: string; settings: string; status: string }
@@ -134,6 +138,13 @@ async function alert($: EngineInterface, sentences: string[]) {
     return
   }
   await send($, { mode: 'reply', urgent: true, sentences, ref: null })
+}
+
+// Says a question ahead of other speech whenever replies would be spoken now.
+async function ask($: EngineInterface, sentences: string[]) {
+  if (sentences.length > 0 && (await shouldSpeak($, await loadSettings($)))) {
+    await send($, { mode: 'reply', urgent: true, sentences, ref: null })
+  }
 }
 
 // After a long turn, "All done." follows the reply, when the person is away.
@@ -253,9 +264,10 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A question is said like a reply (not only when away): it is what Claude is waiting on.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     if (!e.agentId) {
-      void alert($, questionText(e)).catch(() => undefined)
+      void ask($, questionText(e)).catch(() => undefined)
     }
 
     return next(e)
@@ -296,7 +308,12 @@ export const register: Register = on => {
     let live = liveTurns.get(e.turnId)
     if (!live) {
       const conf = await loadSettings($)
-      live = { speak: conf.live ? shouldSpeak($, conf) : Promise.resolve(false), lastStep: e.index, sent: Promise.resolve() }
+      live = {
+        speak: conf.live ? shouldSpeak($, conf) : Promise.resolve(false),
+        lastStep: e.index,
+        sent: Promise.resolve(),
+        workUpdates: conf.workUpdates,
+      }
       liveTurns.set(e.turnId, live)
       if (!conf.live) {
         return yield* next(e)
@@ -307,15 +324,22 @@ export const register: Register = on => {
     let text = ''
     let block = -1
     let sent = 0
+    let usesTools = false
     for await (const chunk of next(e)) {
       yield chunk
-      if (chunk.kind === 'text') {
+      if (chunk.kind === 'tool') {
+        usesTools = true // this step is work in progress, not the final reply
+      } else if (chunk.kind === 'text') {
         text += (block !== -1 && chunk.index !== block ? '\n\n' : '') + chunk.text
         block = chunk.index
-        sent = await streamStep($, live, ref, text, false, sent)
+        if (live.workUpdates || (!usesTools && text.length >= FINAL_HINT_CHARS)) {
+          sent = await streamStep($, live, ref, text, false, sent)
+        }
       }
     }
-    await streamStep($, live, ref, text, true, sent)
+    if (live.workUpdates || !usesTools) {
+      await streamStep($, live, ref, text, true, sent)
+    }
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -326,6 +350,7 @@ export const register: Register = on => {
       // A streamed reply's id names its step, so the server's progress lines up with it.
       const reply: Reply = { id: isLive ? `${e.turnId}:${live.lastStep}` : e.turnId, sentences: toSentences(e.answer) }
       const all = await update($, replies, list => [...list, reply].slice(-MAX_REPLIES))
+      void send($, { mode: 'record', reply }).catch(() => undefined) // for the VS Code extension's panel
       await update($, view, () => all.length - 1)
       await update($, top, () => 0)
       if (!isLive) {
@@ -415,7 +440,7 @@ export const register: Register = on => {
     const speed = (delta: number) => async () => {
       await saveSettings($, { speed: Math.round(Math.min(1.6, Math.max(0.7, conf.speed + delta)) * 10) / 10 })
     }
-    const toggle = (key: 'awayOnly' | 'summarize' | 'live' | 'projectVoices') => async () => {
+    const toggle = (key: 'awayOnly' | 'summarize' | 'live' | 'projectVoices' | 'workUpdates') => async () => {
       await saveSettings($, { [key]: !conf[key] })
     }
     const clock = await $.clock.now()
@@ -445,6 +470,9 @@ export const register: Register = on => {
         </Button>
         <Button key="live" plain onPress={toggle('live')}>
           <Text dimColor={!conf.live}>{conf.live ? '☑' : '☐'} speak while typing</Text>
+        </Button>
+        <Button key="workUpdates" plain onPress={toggle('workUpdates')}>
+          <Text dimColor={!conf.workUpdates}>{conf.workUpdates ? '☑' : '☐'} speak work updates</Text>
         </Button>
         <Button key="projectVoices" plain onPress={toggle('projectVoices')}>
           <Text dimColor={!conf.projectVoices}>{conf.projectVoices ? '☑' : '☐'} own voice per project</Text>
@@ -502,7 +530,7 @@ export const register: Register = on => {
     const listWidth = width - 4 // the » and ▸ columns
     const rowsFor = (labels: number) => Math.ceil(labels / Math.max(1, width))
     const headerRows = 3 + rowsFor(70)
-    const footerRows = 3 + rowsFor(160) + rowsFor(105)
+    const footerRows = 3 + rowsFor(185) + rowsFor(105)
     const listRows = Math.max(1, height - headerRows - footerRows)
     const start = windowStart(sentences, await read($, top), live, listRows, listWidth)
     const shown = fitting(sentences, start, listRows, listWidth)
