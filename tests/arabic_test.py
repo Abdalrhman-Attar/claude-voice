@@ -38,6 +38,13 @@ assert read("\u062b\u064f\u0645\u064e\u0651") == "\u062b\u064f\u0645\u0651\u064e
 assert read("الاِخْتِبَارَاتِ") == shadda_first("الِٱخْتِبَارَاتْ")
 assert read("مَعَ الأَصْدِقَاءِ") == shadda_first("مَعْ الْأَصْدِقَاءْ")
 
+# Lone letters by name; a number right after Arabic stays with it; a spoken connecting alif is "ʔi".
+assert system_voice.letter_names("ع ح خ") == "عين، حاء، خاء"
+assert system_voice.letter_names("و هذا") == "و هذا"
+assert pieces("Numbers: الساعة الآن 10.", whole=False) == [("Numbers: ", False), ("الساعة الآن 10.", True)]
+assert read("افْتَحْ") == "إِفْتَحْ"
+assert read("ثُمّ") == shadda_first("ثُمَّ")
+
 # Shakkelha itself, when its weights are installed here (run with the voice's Python for NumPy).
 import importlib.util  # noqa: E402
 
@@ -47,5 +54,6 @@ if os.path.exists(os.path.join(arabic.DIR, "shakkelha.npz")) and importlib.util.
     shakkelha = Shakkelha(os.path.join(arabic.DIR, "shakkelha.npz"))
     said = shakkelha("أصلحت مشكلتين في الخادم، وجميع الاختبارات تعمل الآن.")
     assert said.startswith("أَصْلَحْتُ مُشْكِلَتَيْنِ فِي الْخَادِمِ"), said
-    assert shakkelha("Save الملف") .startswith("Save ")  # other letters pass through
+    assert shakkelha("Save الملف").startswith("Save ")  # other letters pass through
+    assert "\u063A\u064E\u0651" in shakkelha("ثم شغّل البرنامج")  # a written shadda is kept, with a vowel
 print("arabic: all checks pass")

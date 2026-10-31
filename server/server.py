@@ -431,6 +431,7 @@ def voices_for(said, voice, speed, arabic):
         if not is_arabic:
             out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
             continue
+        text = system_voice.letter_names(text)
         try:
             made = arabic_voice.synth(text, speed, arabic) if nabra else None
         except Exception as err:

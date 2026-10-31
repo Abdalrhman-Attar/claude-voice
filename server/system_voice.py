@@ -5,8 +5,23 @@ import os, re, shutil, subprocess, sys, tempfile, wave
 
 ARABIC = "؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿"
 LETTER = re.compile(f"[{ARABIC}]")
-# A stretch of Arabic, with the spaces, digits and punctuation between its words.
-RUN = re.compile(f"[{ARABIC}]+(?:[\\s\\d،؛؟.,:!?()\"'-]+[{ARABIC}]+)*[؟،.!?]?")
+# A stretch of Arabic, with the spaces, digits and punctuation between its words, and a number
+# right after it ("الساعة الآن 10"), which belongs to the Arabic.
+RUN = re.compile(f"[{ARABIC}]+(?:[\\s\\d،؛؟.,:!?()\"'-]+[{ARABIC}]+)*(?:\\s*\\d+(?:[.,]\\d+)*)?[؟،.!?]?")
+# A letter standing alone is said by its name ("ع ح خ" is "ʕayn, ḥāʔ, khāʔ"), not as a bare sound.
+LETTER_NAMES = {
+    "ء": "همزة", "ا": "ألف", "أ": "ألف", "إ": "ألف", "آ": "ألف", "ب": "باء", "ت": "تاء", "ث": "ثاء", "ج": "جيم",
+    "ح": "حاء", "خ": "خاء", "د": "دال", "ذ": "ذال", "ر": "راء", "ز": "زاي", "س": "سين", "ش": "شين",
+    "ص": "صاد", "ض": "ضاد", "ط": "طاء", "ظ": "ظاء", "ع": "عين", "غ": "غين", "ف": "فاء", "ق": "قاف",
+    "ك": "كاف", "ل": "لام", "م": "ميم", "ن": "نون", "ه": "هاء", "ي": "ياء", "ة": "تاء مربوطة", "ى": "ألف مقصورة",
+}  # و alone is "and", written apart by mistake
+LONE_LETTER = re.compile(f"(?<![{ARABIC}])([{''.join(LETTER_NAMES)}])(?![{ARABIC}])")
+
+
+def letter_names(text):
+    """Lone letters as their names, with a short pause after each in a run of them."""
+    named = LONE_LETTER.sub(lambda m: LETTER_NAMES[m.group(1)] + "،", text)
+    return re.sub("،(?=\\s*(?:[.,:;!?)،؛؟]|$))", "", named)
 BASE_WPM = 180  # the voices' rate at speed 1
 _voices = {}
 

@@ -48,12 +48,26 @@ class Shakkelha:
         return np.concatenate([forward, backward], axis=1)
 
     def __call__(self, text):
-        """Text with its short vowels, shadda and sukun restored (any marks it had are redone)."""
+        """Text with its short vowels, shadda and sukun restored; marks already written are kept."""
         w = self.w
         plain = text.translate(MARKS)
+        given = []  # the marks written after each character of plain
+        for ch in text:
+            if ch.translate(MARKS):
+                given.append("")
+            elif given:
+                given[-1] += ch
         ids = [SOS] + [CHAR_IDS.get(ch, UNK) for ch in plain] + [EOS]
         x = self.both_ways(self.both_ways(w["embeddings"][ids], "lstm1"), "lstm2")
         x = np.maximum(0, x @ w["dense1_k"] + w["dense1_b"])
         x = np.maximum(0, x @ w["dense2_k"] + w["dense2_b"])
         best = np.argmax(x @ w["out_k"] + w["out_b"], axis=1)[1:]
-        return "".join(ch + (CLASSES[int(k)] if ch in LETTERS else "") for ch, k in zip(plain, best))
+        out = []
+        for i, (ch, k) in enumerate(zip(plain, best)):
+            guess = CLASSES[int(k)] if ch in LETTERS else ""
+            mark = given[i]
+            if mark == "\u0651":  # a written shadda alone: the guessed vowel goes with it (else a fatha,
+                vowel = guess.replace("\u0651", "").replace("\u0652", "")  # the commonest after one)
+                mark = (vowel or "\u064E") + mark
+            out.append(ch + (mark or guess))
+        return "".join(out)

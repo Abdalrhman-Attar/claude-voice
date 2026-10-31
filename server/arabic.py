@@ -37,7 +37,12 @@ WASL_AFTER_WORD = re.compile("(?:(?<=[\u0627\u0649\u064A\u0648] )|(?<=[\u0627\u0
 CASE_ENDING = re.compile(f"[\u064B-\u0650\u0652]+{END}")
 TAA_AT_END = re.compile(f"\u0629\u0652?{END}")
 # Words whose last vowel is part of the word, not a case ending: "thumma", not "thumm".
-FIXED_ENDINGS = {"ثم", "هو", "هي", "أن", "إن", "لكن", "كأن", "ليت", "لعل", "حيث", "منذ", "أين", "كيف", "ليس", "ليست"}
+FIXED_ENDINGS = {"أن", "إن", "ليست"}  # kept as the diacritizer wrote them
+FIXED_WORDS = {  # and these spelled in full, as the diacritizer sometimes leaves their last vowel off
+    "ثم": "ثُمَّ", "هو": "هُوَ", "هي": "هِيَ", "لكن": "لَكِنَّ", "كأن": "كَأَنَّ", "ليت": "لَيْتَ", "لعل": "لَعَلَّ",
+    "حيث": "حَيْثُ", "منذ": "مُنْذُ", "أين": "أَيْنَ", "كيف": "كَيْفَ", "ليس": "لَيْسَ",
+}
+SAID_WASL = re.compile(f"(?<![{LETTER}{MARKS}\u0671])\u0627(?=[\u0621-\u0643\u0645-\u064A]\u0652)")
 BARE_HAMZA_BELOW = re.compile(f"\u0625(?![{MARKS}])")  # إ is always "ʔi"; espeak drops it without its kasra
 PUNCTUATION = str.maketrans({"\u060C": ",", "\u061B": ";", "\u061F": "?"})
 _lock = threading.Lock()
@@ -134,6 +139,9 @@ class Model:
         p = re.sub(r"(?<=\S)\.(?=\S)", "", p)  # espeak's syllable dots would be heard as pauses
         for mark in "̪ˤ[]{}":
             p = p.replace(mark, "")
+        # espeak's Arabic numbers borrow the English r and double a word's first letter: "ˈʕʕˈaʃaɹa" (10).
+        p = p.replace("ɹ", "r").replace("ʕʕ", "ʕ").replace("-", "")
+        p = re.sub(r"(^|\s)([ˈˌ]?)([^\Wːˈˌ])\3", r"\1\2\3", p)
         p = re.sub(r"([^\Wːˈˌ])\1\1+", r"\1\1", p)  # "ʔannnusχa": a doubled letter is two, never three
         return p.strip()
 
@@ -152,22 +160,36 @@ class Model:
         return audio.squeeze().astype("float32"), RATE
 
 
+def shadda_first(text):
+    """espeak reads a shadda only when it comes before the vowel ("thumma", not "thumm")."""
+    return re.sub("([\u064B-\u0650])\u0651", "\u0651\\1", text)
+
+
+def ending(word):
+    plain = strip_marks(word)
+    if plain in FIXED_WORDS:
+        return shadda_first(FIXED_WORDS[plain])
+    return word if plain in FIXED_ENDINGS else CASE_ENDING.sub("\u0652", word)
+
+
 def strip_marks(word):
     return re.sub(f"[{MARKS}]", "", word).replace("\u0671", "\u0627")
 
 
 def reading(vowelled):
     """Vowelled text as it is read aloud: connecting alifs silent, words without case endings."""
-    text = re.sub("([\u064B-\u0650])\u0651", "\u0651\\1", vowelled)  # espeak reads a shadda only before the vowel
+    text = shadda_first(vowelled)
     # Shakkelha writes the connecting alif inside a word with its kasra ("الاِخْتِبَار"): the kasra
     # belongs to the letter before ("al-ikhtibār"), and the alif is silent.
     text = re.sub(f"(?<=[{LETTER}])\u0627\u0650", "\u0650\u0671", text)
     text = re.sub(f"(?<![{LETTER}{MARKS}])([\u0627\u0671]\u0644)(?=[\u0621-\u0625])", "\\1\u0652", text)  # "al-ʔaṣdiqāʔ"
     text = WASL_AFTER_WORD.sub("\u0671", WASL_AFTER_VOWEL.sub("\u0671", text))
     text = BARE_HAMZA_BELOW.sub("\u0625\u0650", text)
+    # A connecting alif that is said (at the start, or after a consonant) is "ʔi" before a vowelless
+    # letter other than the article's lam: "iftaḥ", "istakhdim"; espeak would say "aftaḥ".
+    text = SAID_WASL.sub("\u0625\u0650", text)
     # A sukun, else espeak adds a vowel of its own ("ṣawtuka"); particles keep their fixed vowel.
-    text = re.sub(f"[{LETTER}{MARKS}\u0671]+", lambda m: m.group(0) if strip_marks(m.group(0)) in FIXED_ENDINGS
-                  else CASE_ENDING.sub("\u0652", m.group(0)), text)
+    text = re.sub(f"[{LETTER}{MARKS}\u0671]+", lambda m: ending(m.group(0)), text)
     return TAA_AT_END.sub("\u0647\u0652", text)  # ـة without its ending is said "-ah"
 
 
