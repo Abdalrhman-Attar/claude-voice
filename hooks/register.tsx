@@ -20,6 +20,8 @@ import {
 } from './sentences'
 
 const PANE = 'speak'
+// Text-link addresses on remote surfaces: never opened, only caught by onLinkPress.
+const LINK = 'https://speak.local'
 // Engine keybinding borrowed for a global Stop: it has no default key and acts only in the diff panel.
 const STOP_ACTION = 'app:toggleDiffPreSession'
 const MAX_REPLIES = 100
@@ -196,6 +198,11 @@ function statusText(p: Playback): string | undefined {
   return p.state === 'paused' ? '❚❚ paused' : '♪ speaking'
 }
 
+// A sentence shown inside Markdown, its markdown characters taken literally.
+function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_[\]<>#|~]/g, ch => `\\${ch}`)
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -340,7 +347,10 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Markdown } = $.ui.resolve(e)
+    // VS Code, the desktop app and mobile draw every Button as a native button, so there the
+    // sentence list, navigation and settings are text links and only the main controls are buttons.
+    const remote = e.surface !== 'terminal'
     // Replies stored in an older shape have no sentence list: skip them.
     const list: Reply[] = (await read($, replies)).filter(r => typeof r === 'object' && r !== null && Array.isArray(r.sentences))
     const at = Math.min(Math.max(0, await read($, view)), Math.max(0, list.length - 1))
@@ -450,12 +460,56 @@ export const register: Register = on => {
         </Button>
       </Box>
     )
+    const settingsText = [
+      `voice [**${conf.projectVoices ? 'per project' : conf.voice}**](${LINK}/voice)`,
+      `speed [−](${LINK}/slower) **${conf.speed.toFixed(1)}×** [+](${LINK}/faster)`,
+      `[${muted ? muteLabel : '♪ auto-speak'}](${LINK}/mute)`,
+      `[${conf.awayOnly ? '☑' : '☐'} only when away](${LINK}/away)`,
+      `[${conf.live ? '☑' : '☐'} speak while typing](${LINK}/live)`,
+      `[${conf.projectVoices ? '☑' : '☐'} own voice per project](${LINK}/projectVoices)`,
+      `[${conf.summarize ? '☑' : '☐'} summarize long](${LINK}/summary)`,
+    ].join(' · ')
     const historyButton = (
       <Button key="rebuild" hotkey="r" dimColor onPress={rebuild}>⟳ Load chat history</Button>
     )
 
     const height = Math.max(8, e.props.scroll.bodyRows)
 
+    // A press on a text link: the path names the action, the number its sentence or reply.
+    const scrollBy = (rows: number) => async () => {
+      await update($, top, t => Math.min(Math.max(0, t + rows), Math.max(0, sentences.length - 1)))
+    }
+    const actions: Record<string, (n: number) => () => Promise<void>> = {
+      play,
+      from: playFrom,
+      reply: (n: number) => show(Math.min(Math.max(0, n), Math.max(0, list.length - 1))),
+      voice: () => nextVoice,
+      slower: () => speed(-0.1),
+      faster: () => speed(0.1),
+      mute: () => toggleMute,
+      away: () => toggle('awayOnly'),
+      live: () => toggle('live'),
+      projectVoices: () => toggle('projectVoices'),
+      summary: () => toggle('summarize'),
+      up: (n: number) => scrollBy(-n),
+      down: (n: number) => scrollBy(n),
+    }
+    const onLink = (link: { href: string }) => {
+      const [name = '', n = '0'] = link.href.slice(LINK.length + 1).split('/')
+      void actions[name]?.(Number(n))()
+    }
+    const settingsBlock = <Markdown key="settings" text={settingsText} onLinkPress={onLink} />
+
+    if (!reply && remote) {
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold>Nothing to play yet</Text>
+          <Text dimColor>Claude's replies show up here as they arrive.</Text>
+          <Box marginTop={1}>{historyButton}</Box>
+          <Box marginTop={1}>{settingsBlock}</Box>
+        </Box>
+      )
+    }
     if (!reply) {
       return (
         <Box flexDirection="column" paddingX={1} height={height}>
@@ -496,6 +550,51 @@ export const register: Register = on => {
       await update($, top, () => Math.min(Math.max(0, i), Math.max(0, sentences.length - 1)))
     }
     const page = Math.max(1, shown - 1)
+
+    if (remote) {
+      const nav = [
+        at > 0 ? `[◀](${LINK}/reply/${at - 1})` : '◀',
+        `**Reply ${at + 1} of ${list.length}**`,
+        isLatest ? '▶' : `[▶](${LINK}/reply/${at + 1}) · [latest](${LINK}/reply/${list.length - 1})`,
+      ].join(' ')
+      // Each sentence on its own line, a blank line between paragraphs; ▸ plays it, » reads on from it.
+      const lines = sentences.slice(start, start + shown).map((s, k) => {
+        const i = start + k
+        const text = escapeMarkdown(s.text)
+        const row = `[▸](${LINK}/play/${i}) [»](${LINK}/from/${i}) ${live === i ? `**♪ ${text}**` : text}`
+        return (k > 0 && sentences[i - 1]?.para !== s.para ? '\n\n' : k > 0 ? '  \n' : '') + row
+      })
+      const scroll = [
+        start > 0 ? `[▲](${LINK}/up/${page})` : '',
+        start + shown < sentences.length ? `[▼](${LINK}/down/${page})` : '',
+        `${start + 1}–${Math.min(sentences.length, start + shown)} of ${sentences.length}`,
+      ].filter(Boolean).join(' ')
+
+      return (
+        <Box flexDirection="column" paddingX={1} height={height}>
+          <Box flexDirection="column" flexShrink={0}>
+            <Box flexDirection="row" justifyContent="space-between">
+              <Markdown key="nav" text={nav} onLinkPress={onLink} />
+              <Text color={now.state === 'idle' ? undefined : 'green'} dimColor={now.state === 'idle'}>{status}</Text>
+            </Box>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
+              <Button key="all" variant="primary" onPress={playAll}>▶ Play all</Button>
+              <Button key="pause" onPress={pause}>{now.state === 'paused' ? '▶ Resume' : '❚❚ Pause'}</Button>
+              <Button key="skip" onPress={skip}>⏭ Skip</Button>
+              <Button key="stop" onPress={stop}>■ Stop</Button>
+              {historyButton}
+            </Box>
+          </Box>
+          <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden" marginTop={1}>
+            <Markdown key="sentences" text={lines.join('')} onLinkPress={onLink} />
+          </Box>
+          <Box flexDirection="column" flexShrink={0}>
+            {sentences.length > shown ? <Markdown key="scroll" text={scroll} dimColor onLinkPress={onLink} /> : null}
+            {settingsBlock}
+          </Box>
+        </Box>
+      )
+    }
 
     return (
       <Box flexDirection="column" paddingX={1} height={height}>

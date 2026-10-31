@@ -25,6 +25,37 @@ const PANE = {
   view: {},
 } as const
 
+const LINK = 'https://speak.local'
+type Ui = { press: (t: { key: string; link?: { href: string } }) => Promise<unknown> }
+const SETTING_LINKS = ['voice', 'faster', 'slower', 'mute', 'away']
+
+// Presses a control by its terminal key. On remote surfaces (desktop, VS Code) sentences,
+// reply navigation and settings are text links in a Markdown block instead of Buttons.
+function tap(ui: Ui, surface: string, key: string, reply = 0) {
+  if (surface === 'terminal') {
+    return ui.press({ key })
+  }
+  const sentence = /^([spf])(\d+)$/.exec(key)
+  if (sentence) {
+    return ui.press({ key: 'sentences', link: { href: `${LINK}/${sentence[1] === 'f' ? 'from' : 'play'}/${sentence[2]}` } })
+  }
+  if (SETTING_LINKS.includes(key)) {
+    return ui.press({ key: 'settings', link: { href: `${LINK}/${key}` } })
+  }
+  if (key === 'prev' || key === 'next') {
+    return ui.press({ key: 'nav', link: { href: `${LINK}/reply/${reply}` } })
+  }
+  return ui.press({ key })
+}
+
+type Finder = { find: (q: { key?: string; type?: string; text?: RegExp }) => Promise<{ text?: unknown } | undefined> }
+
+// "Reply 2 of 2": a Text on the terminal, part of the navigation links elsewhere.
+async function replyLabel(ui: Finder, surface: string) {
+  const found = surface === 'terminal' ? await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }) : await ui.find({ key: 'nav' })
+  return /Reply \d+ of \d+/.exec(String(found?.text ?? ''))?.[0]
+}
+
 const NOW = new Date(2026, 9, 31, 14, 0).getTime()
 const OK = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
 
@@ -244,13 +275,13 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'First one. Second one!')
     const ui = await mount($)
 
-    await ui.press({ key: 's1' })
-    await ui.press({ key: 'p1' })
-    await ui.press({ key: 'f0' })
-    await ui.press({ key: 'all' })
-    await ui.press({ key: 'pause' })
-    await ui.press({ key: 'skip' })
-    await ui.press({ key: 'stop' })
+    await tap(ui, surface, 's1')
+    await tap(ui, surface, 'p1')
+    await tap(ui, surface, 'f0')
+    await tap(ui, surface, 'all')
+    await tap(ui, surface, 'pause')
+    await tap(ui, surface, 'skip')
+    await tap(ui, surface, 'stop')
     expect(host.sent.map(({ session, label, ...r }) => r)).toEqual([
       { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
       { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
@@ -267,10 +298,10 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'Hello.')
     const ui = await mount($)
 
-    await ui.press({ key: 'voice' })
-    await ui.press({ key: 'faster' })
-    await ui.press({ key: 'mute' })
-    await ui.press({ key: 'away' })
+    await tap(ui, surface, 'voice')
+    await tap(ui, surface, 'faster')
+    await tap(ui, surface, 'mute')
+    await tap(ui, surface, 'away')
     expect(JSON.parse(host.files['/home/me/.claude/kokoro/settings.json'] ?? '{}')).toEqual({
       voice: 'af_bella',
       speed: 1.2,
@@ -289,10 +320,10 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'New reply.', 't2')
     const ui = await mount($)
 
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
-    await ui.press({ key: 'prev' })
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 1 of 2')
-    await ui.press({ key: 's0' })
+    expect(await replyLabel(ui, surface)).toBe('Reply 2 of 2')
+    await tap(ui, surface, 'prev', 0)
+    expect(await replyLabel(ui, surface)).toBe('Reply 1 of 2')
+    await tap(ui, surface, 's0')
     expect(host.sent.map(r => r.sentences)).toEqual([['Old reply.']])
   })
 
@@ -300,9 +331,9 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const host = fakeHost(on, { history: ['Earlier one.', 'Earlier two. More.'] })
     const ui = await mount($)
 
-    await ui.press({ key: 'rebuild' })
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
-    await ui.press({ key: 's1' })
+    await tap(ui, surface, 'rebuild')
+    expect(await replyLabel(ui, surface)).toBe('Reply 2 of 2')
+    await tap(ui, surface, 's1')
     expect(host.sent.map(r => r.sentences)).toEqual([['More.']])
   })
 
@@ -389,11 +420,23 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const short = { ...PANE, scroll: { offset: 0, bodyRows: 24 } }
     const ui = await $.ui.mount({ plugin: 'speak-pane', surface, component: 'Pane', props: short, requestId: 'speak' })
 
-    expect(await ui.find({ key: 's0' })).toBeDefined()
-    expect(await ui.find({ key: 's39' })).toBeUndefined()
-    await ui.press({ key: 'down' })
-    expect(await ui.find({ key: 's0' })).toBeUndefined()
-    for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'voice', 'mute', 'prev']) {
+    if (surface === 'terminal') {
+      expect(await ui.find({ key: 's0' })).toBeDefined()
+      expect(await ui.find({ key: 's39' })).toBeUndefined()
+      await ui.press({ key: 'down' })
+      expect(await ui.find({ key: 's0' })).toBeUndefined()
+      for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'voice', 'mute', 'prev']) {
+        expect(await ui.find({ key })).toBeDefined()
+      }
+      return
+    }
+    const listed = async () => String((await ui.find({ key: 'sentences' }))?.text ?? '')
+    expect(await listed()).toContain('Line 0 here.')
+    expect(await listed()).not.toContain('Line 39 here.')
+    const down = /\((https:\/\/speak\.local\/down\/\d+)\)/.exec(String((await ui.find({ key: 'scroll' }))?.text ?? ''))?.[1] ?? ''
+    await ui.press({ key: 'scroll', link: { href: down } })
+    expect(await listed()).not.toContain('Line 0 here.')
+    for (const key of ['all', 'pause', 'skip', 'stop', 'nav', 'settings', 'scroll']) {
       expect(await ui.find({ key })).toBeDefined()
     }
   })
