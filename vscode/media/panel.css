@@ -3,6 +3,7 @@
 html, body { height: 100%; }
 body {
   margin: 0;
+  padding: 0; /* VS Code gives webview bodies 20px side padding by default */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -120,8 +121,27 @@ body.focused .sentence.live {
 }
 .sentence .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .sentence .speaking { color: var(--vscode-charts-green, var(--vscode-focusBorder)); margin-right: 4px; vertical-align: -2px; }
-.sentence .actions { display: flex; gap: 0; flex: none; visibility: hidden; margin-top: -1px; }
-.sentence:hover .actions, .sentence.live .actions, .sentence:focus-within .actions { visibility: visible; }
+/* Floats over the row's end on hover, so the text keeps the full width at rest. */
+.sentence .actions {
+  position: absolute;
+  top: 1px;
+  right: 4px;
+  display: flex;
+  gap: 0;
+  visibility: hidden;
+  border-radius: 4px;
+  background: var(--vscode-list-hoverBackground);
+  box-shadow: -8px 0 8px var(--vscode-list-hoverBackground);
+}
+.sentence.live .actions {
+  background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+  box-shadow: -8px 0 8px var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+body.focused .sentence.live .actions {
+  background: var(--vscode-list-activeSelectionBackground);
+  box-shadow: -8px 0 8px var(--vscode-list-activeSelectionBackground);
+}
+.sentence:hover .actions, .sentence:focus-within .actions { visibility: visible; }
 .sentence .actions .action { height: 20px; min-width: 20px; }
 .sentence .actions .codicon { font-size: 14px; }
 .empty {
