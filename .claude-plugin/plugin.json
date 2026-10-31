@@ -1,6 +1,6 @@
 {
   "name": "speak-pane",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "Reads Claude replies aloud with a local Kokoro voice: live while typing, a sentence panel with play, pause, skip and history",
   "types": "./types/index.d.ts",
   "author": {

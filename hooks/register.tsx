@@ -22,6 +22,9 @@ import {
 const PANE = 'speak'
 // Text-link addresses on remote surfaces: never opened, only caught by onLinkPress.
 const LINK = 'https://speak.local'
+// Row tints on remote surfaces, translucent so they suit light and dark themes.
+const HOVER_ROW = '#8a8aff26'
+const LIVE_ROW = '#4ade8030'
 // Engine keybinding borrowed for a global Stop: it has no default key and acts only in the diff panel.
 const STOP_ACTION = 'app:toggleDiffPreSession'
 const MAX_REPLIES = 100
@@ -563,7 +566,13 @@ export const register: Register = on => {
         const i = start + k
         const text = escapeMarkdown(s.text)
         return (
-          <Box key={`line${i}`} marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
+          <Box
+            key={`line${i}`}
+            marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}
+            paddingX={1}
+            backgroundColor={live === i ? LIVE_ROW : undefined}
+            hover={{ backgroundColor: HOVER_ROW }}
+          >
             <Markdown
               key={`row${i}`}
               text={`[▶](${LINK}/play/${i}) [»](${LINK}/from/${i}) ${live === i ? `**♪ ${text}**` : text}`}
