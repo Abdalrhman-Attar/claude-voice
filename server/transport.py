@@ -9,6 +9,9 @@ PORT_FILE = os.path.join(HOME, "kokoro.port")
 USE_UNIX = hasattr(socket, "AF_UNIX") and os.name != "nt" and os.environ.get("KOKORO_TRANSPORT") != "tcp"
 
 
+owned = {}  # path -> what it held when this server wrote it, so close() removes only its own
+
+
 class NotRunning(Exception):
     """No server is listening."""
 
@@ -27,6 +30,7 @@ def listen():
                 os.unlink(SOCK)  # stale socket from a dead server
                 s.bind(SOCK)
         token = ""
+        owned[SOCK] = os.stat(SOCK).st_ino
     else:
         try:
             connect()[0].close()
@@ -40,16 +44,19 @@ def listen():
         with open(tmp, "w") as f:
             json.dump({"port": s.getsockname()[1], "token": token}, f)
         os.replace(tmp, PORT_FILE)
+        owned[PORT_FILE] = os.stat(PORT_FILE).st_ino
     s.listen(8)
     s.settimeout(15)
     return s, token
 
 
 def close(s):
+    """Closes the socket and removes the files this server made, never a newer server's."""
     s.close()
-    for path in (SOCK, PORT_FILE) if USE_UNIX else (PORT_FILE,):
+    for path, inode in owned.items():
         try:
-            os.unlink(path)
+            if os.stat(path).st_ino == inode:
+                os.unlink(path)
         except FileNotFoundError:
             pass
 

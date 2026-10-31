@@ -542,6 +542,7 @@ pending = []
 current = None
 seen = {}
 alerted = {}
+quitting = threading.Event()
 
 
 def busy():
@@ -579,6 +580,8 @@ def handle(req):
             seen[session] = now
         if mode == "ping":
             pass  # the VS Code extension keeps the server (and the session reader) running
+        elif mode == "quit":
+            quitting.set()  # its code was updated: the next request starts the new one
         elif mode == "record":
             if req.get("session"):
                 plugin_sessions.add(req["session"])
@@ -784,6 +787,8 @@ if __name__ == "__main__":
                 continue  # TCP is open to every local user: only our own clients carry the token
             handle(req)
             last_active = time.time()
+            if quitting.is_set():
+                break
     finally:
         transport.close(server)
         write_status(session="", ref=None, index=None, state="idle")

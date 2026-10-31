@@ -46,20 +46,25 @@ function serverDir(bundled: string): string {
   return fs.existsSync(path.join(app, 'tts.py')) ? app : bundled
 }
 
-// Keeps the stable copy current after an extension update.
-function syncApp(bundled: string) {
+// Keeps the stable copy current after an extension update; true when a file changed.
+function syncApp(bundled: string): boolean {
   const app = path.join(home(), 'app')
-  if (!fs.existsSync(app)) return
+  if (!fs.existsSync(app)) return false
+  let changed = false
   for (const f of fs.readdirSync(bundled)) {
     if (!/\.(py|json|txt)$/.test(f)) continue
     const from = path.join(bundled, f)
     const to = path.join(app, f)
     try {
-      if (!fs.existsSync(to) || fs.readFileSync(to, 'utf8') !== fs.readFileSync(from, 'utf8')) fs.copyFileSync(from, to)
+      if (!fs.existsSync(to) || fs.readFileSync(to, 'utf8') !== fs.readFileSync(from, 'utf8')) {
+        fs.copyFileSync(from, to)
+        changed = true
+      }
     } catch {
       // a file in use: the next start copies it
     }
   }
+  return changed
 }
 
 type SetupState = { running: boolean; step: number; detail: string; log: string[]; ok?: boolean; error?: string }
@@ -312,7 +317,8 @@ export function activate(context: vscode.ExtensionContext): Api {
   store.poll()
   paint()
 
-  syncApp(server)
+  // An updated server takes over at once: the old one quits and the first ping starts the new one.
+  const updated = syncApp(server)
   // Setup with progress in the panel: the bundled installer, its output read for the step it is on.
   const STEPS: [RegExp, number][] = [
     [/Python|uv/i, 1],
@@ -369,7 +375,8 @@ export function activate(context: vscode.ExtensionContext): Api {
 
   // Keeps the server running while VS Code is open, so finished replies are read even without the plugin.
   const ping = () => voice.ready() && void voice.send({ mode: 'ping' })
-  ping()
+  if (updated && voice.ready()) void voice.send({ mode: 'quit' }).then(() => setTimeout(ping, 1500))
+  else ping()
   const pinger = setInterval(ping, PING_MS)
 
   const latest = () => store.visibleReplies().at(-1)

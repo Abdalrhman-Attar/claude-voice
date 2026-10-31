@@ -114,7 +114,7 @@ def start_server():
 try:
     transport.send(request)
 except transport.NotRunning:
-    if request.get("mode") in ("stop", "pause", "skip"):
+    if request.get("mode") in ("stop", "pause", "skip", "quit"):
         sys.exit(0)  # nothing is playing without a server
     start_server()
     for _ in range(100):
