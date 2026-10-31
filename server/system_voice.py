@@ -30,6 +30,12 @@ def has_arabic(text):
     return bool(LETTER.search(text))
 
 
+def arabic_share(text):
+    """The part of a text's letters that are Arabic, from 0 to 1."""
+    letters = re.findall(rf"[A-Za-z{ARABIC}]", text)
+    return sum(1 for c in letters if LETTER.match(c)) / len(letters) if letters else 0.0
+
+
 def mostly_arabic(text):
     letters = re.findall(rf"[A-Za-z{ARABIC}]", text)
     return bool(letters) and sum(1 for c in letters if LETTER.match(c)) * 2 >= len(letters)

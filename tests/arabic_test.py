@@ -58,6 +58,8 @@ assert arabic_numbers.spell_numbers("السرعة 3.5 و١٢ وv2") == "السر
 import magpie  # noqa: E402
 
 assert all(name.startswith("nemo-speech-0.3.0-") and len(digest) == 64 for name, digest in magpie.BUILDS.values())
+assert magpie.VOICES["Sofia"] == "4" and magpie.DEFAULT_VOICE == "Sofia"  # by speaker number, as the model card lists
+assert system_voice.arabic_share("افتح ملف config.json ثم شغّل npm install.") >= 0.25
 
 # Shakkelha itself, when its weights are installed here (run with the voice's Python for NumPy).
 import importlib.util  # noqa: E402

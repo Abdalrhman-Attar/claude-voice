@@ -7,8 +7,8 @@
     'am_michael', 'am_adam', 'am_fenrir', 'am_puck', 'bf_emma', 'bf_isabella', 'bm_george', 'bm_lewis',
   ]
   // Arabic voices: MagpieTTS's when it is installed, then Nabra's (its own, or a Kokoro voice:
-  // Nabra is a Kokoro fine-tune). '' is the default: Magpie's Jason, or Nabra's own voice.
-  const MAGPIE_VOICES = [['Jason', 'Jason (male)'], ['Leo', 'Leo (male)'], ['John', 'John (male)'], ['Sofia', 'Sofia (female)'], ['Aria', 'Aria (female)']]
+  // Nabra is a Kokoro fine-tune). '' is the default: Magpie's Sofia, or Nabra's own voice.
+  const MAGPIE_VOICES = [['Sofia', 'Sofia (female)'], ['Aria', 'Aria (female)'], ['Jason', 'Jason (male)'], ['Leo', 'Leo (male)'], ['John', 'John (male)']]
   const NABRA_VOICES = [
     ['af_msa', 'Nabra (female)'], ['am_onyx', 'Onyx (male)'], ['am_adam', 'Adam (male)'], ['bm_lewis', 'Lewis (male)'],
     ['am_michael', 'Michael (male)'], ['af_heart', 'Heart (female)'], ['bf_emma', 'Emma (female)'],

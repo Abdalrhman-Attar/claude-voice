@@ -423,6 +423,12 @@ def synth(said, voice, speed, arabic=""):
         return audio
 
 
+def english_words(text):
+    """English inside an Arabic sentence, said the way the English rules say it ("config dot json")."""
+    said = speakable(text)
+    return said[:-1] if said.endswith(".") and not text.rstrip().endswith(".") else said
+
+
 def voices_for(said, voice, speed, arabic):
     """(samples, rate) for each piece of a sentence: Kokoro's voice, and for Arabic Magpie's, Nabra's or the system's."""
     out = []
@@ -431,7 +437,17 @@ def voices_for(said, voice, speed, arabic):
     # others take a mostly Arabic sentence whole.
     use_magpie = magpie.installed() and (not arabic or arabic in magpie.VOICES)
     nabra = not use_magpie and arabic_voice.installed()
-    for text, is_arabic in system_voice.pieces(said, whole=not nabra):
+    # Magpie skips Latin letters in Arabic, so the English words of an Arabic sentence (a quarter or
+    # more of its letters Arabic) are read by Magpie too, as English and in the same voice; in an
+    # English sentence with an Arabic word they stay Kokoro's.
+    english_in_magpie = use_magpie and system_voice.arabic_share(said) >= 0.25
+    for text, is_arabic in system_voice.pieces(said, whole=not (nabra or use_magpie)):
+        if not is_arabic and english_in_magpie and re.search(r"[A-Za-z0-9]", text):
+            try:
+                out.append(magpie.synth(english_words(text), arabic or magpie.DEFAULT_VOICE, "en-US"))
+                continue
+            except Exception as err:
+                log("arabic voice error:", err)
         if not is_arabic:
             out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
             continue

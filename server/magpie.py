@@ -8,8 +8,10 @@ DIR = os.path.join(HOME, "magpie")
 MODELS = os.path.join(DIR, "models")  # NEMO_SPEECH_MODEL_DIR
 READY = os.path.join(DIR, "ready")  # written once the runtime and the model are both in place
 MODEL = "nvidia/magpie_tts_multilingual_357m"
-VOICES = ["Jason", "Sofia", "Aria", "Leo", "John"]
-DEFAULT_VOICE = "Jason"
+# Voice -> speaker index, as NVIDIA's model card lists them. Requests send the index: NeMo-Speech.cpp
+# 0.3.0 maps the names to the wrong speakers ("Sofia" gives a man's voice).
+VOICES = {"Aria": "0", "Jason": "1", "John": "2", "Leo": "3", "Sofia": "4"}
+DEFAULT_VOICE = "Sofia"
 LANGUAGE = "ar-MSA"
 IDLE_STOP = 15 * 60  # the runtime holds the model in memory; it is stopped after this long unused
 
@@ -104,7 +106,7 @@ class Runtime:
                 if self.proc and time.time() - self.used > IDLE_STOP:
                     self.stop()
 
-    def speak(self, text, voice):
+    def speak(self, text, voice, language):
         """(samples as float32, rate) for the text."""
         import numpy as np
 
@@ -112,7 +114,7 @@ class Runtime:
             self.used = time.time()
             if self.proc is None or self.proc.poll() is not None:
                 self.start()
-            body = json.dumps({"input": text, "voice": voice, "language": LANGUAGE, "response_format": "wav"}).encode()
+            body = json.dumps({"input": text, "voice": VOICES[voice], "language": language, "response_format": "wav"}).encode()
             req = urllib.request.Request(f"http://127.0.0.1:{self.port}/v1/audio/speech", body,
                                          {"Content-Type": "application/json", "Authorization": f"Bearer {self.key}"})
             data = urllib.request.urlopen(req, timeout=120).read()
@@ -126,11 +128,12 @@ class Runtime:
 _runtime = None
 
 
-def synth(text, voice=DEFAULT_VOICE):
-    """(samples, rate) of Arabic text in a Magpie voice, or None when Magpie is not installed."""
+def synth(text, voice=DEFAULT_VOICE, language=LANGUAGE):
+    """(samples, rate) of text in a Magpie voice (Arabic, or "en-US" for the English words in an
+    Arabic sentence: Magpie skips Latin letters in Arabic), or None when Magpie is not installed."""
     global _runtime
     if not installed():
         return None
     if _runtime is None:
         _runtime = Runtime()
-    return _runtime.speak(text, voice if voice in VOICES else DEFAULT_VOICE)
+    return _runtime.speak(text, voice if voice in VOICES else DEFAULT_VOICE, language)
