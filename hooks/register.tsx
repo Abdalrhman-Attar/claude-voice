@@ -7,10 +7,15 @@ import {
   DEFAULT_SETTINGS,
   fitting,
   IDLE,
+  isMuted,
+  parseMute,
   parseSettings,
   parseStatus,
   pausesFor,
+  permissionText,
+  questionText,
   toSentences,
+  untilText,
   windowStart,
 } from './sentences'
 
@@ -20,6 +25,7 @@ const STOP_ACTION = 'app:toggleDiffPreSession'
 const MAX_REPLIES = 100
 const SUMMARY_OVER = 1200 // chars of plain text; longer replies are summarized when summaries are on
 const POLL_MS = 400
+const LONG_TURN_MS = 30000 // a turn this long ends with "All done." when the person is away
 const VOICES = ['af_heart', 'af_bella', 'af_nicole', 'af_sky', 'am_michael', 'am_adam', 'bf_emma', 'bm_george']
 
 const replies = atom({ plugin: 'speak-pane', key: 'replies' } as const, [])
@@ -37,6 +43,7 @@ type Request = {
   offset?: number
   all?: boolean
   append?: boolean
+  urgent?: boolean
 }
 
 // Turns being read aloud while they stream: whether to speak them, and what was sent.
@@ -100,22 +107,44 @@ async function summarize($: EngineInterface, answer: string): Promise<string | n
 
 // Whether auto-speak should talk now: not muted, and away from the terminal when that is asked.
 async function shouldSpeak($: EngineInterface, conf: SpeakSettings): Promise<boolean> {
-  if (conf.muted) {
+  if (isMuted(conf, await $.clock.now())) {
     return false
   }
-  if (conf.awayOnly) {
-    const terminal = await $.env.get('__CFBundleIdentifier')
-    const p = await paths($)
-    if (terminal && (await $.process.run([p.python, p.tts, '--check-away', terminal])).exitCode !== 0) {
-      return false // the terminal is in front: the person is reading already
-    }
-  }
 
-  return true
+  return !conf.awayOnly || (await isAway($))
+}
+
+// Whether the terminal running this session is not the app in front.
+async function isAway($: EngineInterface): Promise<boolean> {
+  const terminal = await $.env.get('__CFBundleIdentifier')
+  if (!terminal) {
+    return true
+  }
+  const p = await paths($)
+
+  return (await $.process.run([p.python, p.tts, '--check-away', terminal])).exitCode === 0
+}
+
+// Says what Claude is waiting on (a permission, a question, a plan), ahead of other speech,
+// when not muted and the person is away from the terminal; at the terminal they can see it.
+async function alert($: EngineInterface, sentences: string[]) {
+  const conf = await loadSettings($)
+  if (sentences.length === 0 || isMuted(conf, await $.clock.now()) || !(await isAway($))) {
+    return
+  }
+  await send($, { mode: 'reply', urgent: true, sentences, ref: null })
+}
+
+// After a long turn, "All done." follows the reply, when the person is away.
+async function sayDone($: EngineInterface, ref: string, after: number, durationMs: number) {
+  if (durationMs < LONG_TURN_MS || !(await shouldSpeak($, await loadSettings($))) || !(await isAway($))) {
+    return
+  }
+  await send($, { mode: 'reply', sentences: ['All done.'], pauses: [0.4], ref, offset: after, append: true })
 }
 
 // Reads a finished reply aloud, following the person's settings.
-async function autoSpeak($: EngineInterface, reply: Reply, answer: string) {
+async function autoSpeak($: EngineInterface, reply: Reply, answer: string, durationMs: number) {
   const conf = await loadSettings($)
   if (!(await shouldSpeak($, conf))) {
     return
@@ -128,6 +157,7 @@ async function autoSpeak($: EngineInterface, reply: Reply, answer: string) {
     return
   }
   await send($, { mode: 'reply', sentences: texts, pauses: pausesFor(reply.sentences), ref: reply.id, offset: 0 })
+  await sayDone($, reply.id, texts.length, durationMs)
 }
 
 // Sends the newly complete sentences of a streaming step, after what was sent before.
@@ -173,6 +203,11 @@ export const register: Register = on => {
       description: 'Show replies as sentences with play buttons',
     })
     await $.command.register({ name: 'hush', description: 'Stop the voice reading replies aloud' })
+    await $.command.register({
+      name: 'mute',
+      description: 'Mute auto-speak: /mute, /mute 30m, /mute 2h, /mute until 3pm, /mute off',
+      argumentHint: '[30m | 2h | until 3pm | off]',
+    })
     void $.ui.open({ id: PANE, title: 'Speak' })
     void loadSettings($)
     const me = await $.session.id()
@@ -186,6 +221,51 @@ export const register: Register = on => {
     await send($, { mode: 'stop', all: true })
 
     return { text: 'Stopped speaking.' }
+  })
+
+  on('command.run', { command: 'mute' }, async ($, e) => {
+    const now = await $.clock.now()
+    const until = parseMute(e.args, now)
+    if (until === null) {
+      return { text: 'Try /mute, /mute 30m, /mute 2h, /mute until 3pm or /mute off.' }
+    }
+    if (until === 0) {
+      await saveSettings($, { muted: false, mutedUntil: 0 })
+      return { text: 'Auto-speak is on again.' }
+    }
+    await send($, { mode: 'stop', all: true })
+    if (until === Infinity) {
+      await saveSettings($, { muted: true, mutedUntil: 0 })
+      return { text: 'Muted until you run /mute off.' }
+    }
+    await saveSettings($, { muted: false, mutedUntil: until })
+
+    return { text: `Muted until ${untilText(until, now)}.` }
+  })
+
+  // Permission prompts, questions and plans are said aloud when the person is away.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    if (e.tool_name !== 'AskUserQuestion' && e.tool_name !== 'ExitPlanMode') {
+      void alert($, [permissionText(e.tool_name, e.tool_input)]).catch(() => undefined)
+    }
+
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    if (!e.agentId) {
+      void alert($, questionText(e)).catch(() => undefined)
+    }
+
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'ExitPlanMode' }, async ($, e, next) => {
+    if (!e.agentId) {
+      void alert($, ['My plan is ready for your review.']).catch(() => undefined)
+    }
+
+    return next(e)
   })
 
   on('command.run', { command: 'speak' }, async $ => {
@@ -248,7 +328,9 @@ export const register: Register = on => {
       await update($, view, () => all.length - 1)
       await update($, top, () => 0)
       if (!isLive) {
-        void autoSpeak($, reply, e.answer)
+        void autoSpeak($, reply, e.answer, e.durationMs)
+      } else if (await live.speak) {
+        void sayDone($, reply.id, reply.sentences.length, e.durationMs).catch(() => undefined)
       }
     } else {
       liveTurns.delete(e.turnId)
@@ -329,15 +411,21 @@ export const register: Register = on => {
     const speed = (delta: number) => async () => {
       await saveSettings($, { speed: Math.round(Math.min(1.6, Math.max(0.7, conf.speed + delta)) * 10) / 10 })
     }
-    const toggle = (key: 'muted' | 'awayOnly' | 'summarize' | 'live') => async () => {
+    const toggle = (key: 'awayOnly' | 'summarize' | 'live' | 'projectVoices') => async () => {
       await saveSettings($, { [key]: !conf[key] })
     }
+    const clock = await $.clock.now()
+    const muted = isMuted(conf, clock)
+    const toggleMute = async () => {
+      await saveSettings($, muted ? { muted: false, mutedUntil: 0 } : { muted: true })
+    }
+    const muteLabel = !muted ? '♪ auto-speak' : conf.muted ? '✕ muted' : `✕ muted until ${untilText(conf.mutedUntil, clock)}`
 
     const controls = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         <Button key="voice" plain hotkey="v" onPress={nextVoice}>
           <Text dimColor>voice </Text>
-          <Text color="cyan">{conf.voice}</Text>
+          <Text color="cyan">{conf.projectVoices ? 'per project' : conf.voice}</Text>
         </Button>
         <Box flexDirection="row">
           <Text dimColor>speed </Text>
@@ -345,14 +433,17 @@ export const register: Register = on => {
           <Text color="cyan"> {conf.speed.toFixed(1)}× </Text>
           <Button key="faster" plain onPress={speed(0.1)}>+</Button>
         </Box>
-        <Button key="mute" plain hotkey="m" onPress={toggle('muted')}>
-          <Text color={conf.muted ? 'red' : 'green'}>{conf.muted ? '✕ muted' : '♪ auto-speak'}</Text>
+        <Button key="mute" plain hotkey="m" onPress={toggleMute}>
+          <Text color={muted ? 'red' : 'green'}>{muteLabel}</Text>
         </Button>
         <Button key="away" plain onPress={toggle('awayOnly')}>
           <Text dimColor={!conf.awayOnly}>{conf.awayOnly ? '☑' : '☐'} only when away</Text>
         </Button>
         <Button key="live" plain onPress={toggle('live')}>
           <Text dimColor={!conf.live}>{conf.live ? '☑' : '☐'} speak while typing</Text>
+        </Button>
+        <Button key="projectVoices" plain onPress={toggle('projectVoices')}>
+          <Text dimColor={!conf.projectVoices}>{conf.projectVoices ? '☑' : '☐'} own voice per project</Text>
         </Button>
         <Button key="summary" plain onPress={toggle('summarize')}>
           <Text dimColor={!conf.summarize || conf.live}>{conf.summarize ? '☑' : '☐'} summarize long{conf.live ? ' (when not live)' : ''}</Text>
@@ -397,7 +488,7 @@ export const register: Register = on => {
     const listWidth = width - 4 // the » and ▸ columns
     const rowsFor = (labels: number) => Math.ceil(labels / Math.max(1, width))
     const headerRows = 3 + rowsFor(70)
-    const footerRows = 3 + rowsFor(130) + rowsFor(105)
+    const footerRows = 3 + rowsFor(160) + rowsFor(105)
     const listRows = Math.max(1, height - headerRows - footerRows)
     const start = windowStart(sentences, await read($, top), live, listRows, listWidth)
     const shown = fitting(sentences, start, listRows, listWidth)

@@ -7,6 +7,8 @@ export type SpeakSettings = {
   awayOnly: boolean
   summarize: boolean
   live: boolean
+  projectVoices: boolean
+  mutedUntil: number // epoch ms; a timed mute holds until then
 }
 export type Playback = { mine: boolean; ref: string | null; index: number | null; state: 'playing' | 'paused' | 'idle' }
 

@@ -7,16 +7,51 @@ export const DEFAULT_SETTINGS: SpeakSettings = {
   awayOnly: false,
   summarize: true,
   live: true,
+  projectVoices: false,
+  mutedUntil: 0,
 }
 export const IDLE: Playback = { mine: false, ref: null, index: null, state: 'idle' }
 
+const LANGUAGES: Record<string, string> = {
+  py: 'Python', python: 'Python', ts: 'TypeScript', tsx: 'TypeScript', typescript: 'TypeScript',
+  js: 'JavaScript', jsx: 'JavaScript', javascript: 'JavaScript', json: 'JSON', yaml: 'YAML', yml: 'YAML',
+  sh: 'shell', bash: 'shell', zsh: 'shell', shell: 'shell', console: 'shell', html: 'HTML', css: 'CSS',
+  sql: 'SQL', go: 'Go', rust: 'Rust', rs: 'Rust', swift: 'Swift', kotlin: 'Kotlin', dart: 'Dart',
+  java: 'Java', ruby: 'Ruby', rb: 'Ruby', diff: 'diff', toml: 'TOML', md: 'markdown', markdown: 'markdown',
+}
+
+// What is said in place of a code block: its language and size, not the code.
+export function describeCode(lang: string, body: string): string {
+  const name = LANGUAGES[lang.trim().toLowerCase()] ?? ''
+  const lines = body.split('\n').filter(l => l.trim()).length
+  if (name === 'shell') {
+    return lines <= 1 ? 'Shell command.' : `Shell commands, ${lines} lines.`
+  }
+  const what = name ? `${name} code` : 'Code block'
+
+  return lines <= 1 ? `${what}, one line.` : `${what}, ${lines} lines.`
+}
+
+// What is said in place of a table: its size.
+function describeTable(rows: string): string {
+  const n = rows.split('\n').filter(r => /^\s*\|/.test(r) && !/^\s*\|[\s:|-]*$/.test(r)).length - 1
+
+  return n <= 1 ? 'Table, one row.' : `Table, ${n} rows.`
+}
+
+// A sentence end, except after a quoted list number ("1. Does") or an abbreviation ("e.g. this").
+const SENTENCE_END = /(?<=[.!?])(?<![“"'(]\d{1,3}\.)(?<!\b(?:e\.g|i\.e|vs|Dr|Mr|Mrs|Ms|St|cf|approx)\.)\s+/
+
 // Turns a markdown reply into speakable sentences, each tagged with its paragraph and line.
+// Code blocks and tables become one short sentence saying what is there.
 export function toSentences(answer: string): Sentence[] {
   const text = answer
-    .replace(/```[\s\S]*?```/g, '\n\n')
-    .replace(/^\s*\|.*$/gm, '')
+    .replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (_m, lang: string, body: string) => `\n\n${describeCode(lang, body)}\n\n`)
+    .replace(/(?:^[ \t]*\|.*(?:\n|$))+/gm, rows => `\n\n${describeTable(rows)}\n\n`)
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*#`_>|]/g, '')
+    .replace(/(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, '') // emphasis, not snake_case
+    .replace(/[*#`>|]/g, '')
     .replace(/^\s*[-+]\s+/gm, '')
 
   const lines = text
@@ -41,7 +76,7 @@ export function toSentences(answer: string): Sentence[] {
     const parts = l
       .slice(marker.length)
       // Not at a colon ("Fix: the server") or after a quoted list number ("1. Does").
-      .split(/(?<=[.!?])(?<![“"'(]\d{1,3}\.)\s+/)
+      .split(SENTENCE_END)
       .map(s => s.trim())
       .filter(s => /[a-zA-Z0-9]/.test(s))
       // A list number left by a joined label ("Steps: 1.") goes back with its item.
@@ -81,9 +116,12 @@ export function pausesFor(sentences: Sentence[], from = 0): number[] {
 
 // Sentences of reply text still streaming in: an unclosed code block is held back, and
 // the last sentence waits for its end unless the text is final.
+// A table still being written is held back too, so its row count is final when it is said.
 export function completeSentences(text: string, isFinal: boolean): Sentence[] {
   const fences = text.split('```').length - 1
-  const usable = fences % 2 === 1 ? text.slice(0, text.lastIndexOf('```')) : text
+  const closed = fences % 2 === 1 ? text.slice(0, text.lastIndexOf('```')) : text
+  const table = isFinal ? null : /(?:^[ \t]*\|.*(?:\n|$))+\s*$/m.exec(closed)
+  const usable = table ? closed.slice(0, table.index) : closed
   const all = toSentences(usable)
 
   return isFinal || /\n\s*$/.test(usable) || usable !== text ? all : all.slice(0, -1)
@@ -145,6 +183,8 @@ export function parseSettings(raw: string | undefined): SpeakSettings {
     awayOnly: typeof v.awayOnly === 'boolean' ? v.awayOnly : d.awayOnly,
     summarize: typeof v.summarize === 'boolean' ? v.summarize : d.summarize,
     live: typeof v.live === 'boolean' ? v.live : d.live,
+    projectVoices: typeof v.projectVoices === 'boolean' ? v.projectVoices : d.projectVoices,
+    mutedUntil: typeof v.mutedUntil === 'number' ? v.mutedUntil : d.mutedUntil,
   }
 }
 
@@ -161,4 +201,89 @@ export function parseStatus(raw: string | undefined, me: string): Playback {
   } catch {
     return IDLE
   }
+}
+
+// When a timed mute ends, from what follows /mute: "30m", "2h", "90 min", "until 3pm", "until 15:30".
+// `off` unmutes (0), nothing mutes until unmuted (Infinity), and anything else is null.
+export function parseMute(args: string, now: number): number | null {
+  const a = args.trim().toLowerCase()
+  if (a === '') {
+    return Infinity
+  }
+  if (a === 'off' || a === 'unmute') {
+    return 0
+  }
+  const span = /^(?:for\s+)?(\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?)$/.exec(a)
+  if (span) {
+    const n = Number(span[1])
+    return now + n * (span[2]?.startsWith('h') ? 3_600_000 : 60_000)
+  }
+  const at = /^until\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/.exec(a)
+  if (at) {
+    let hour = Number(at[1]) % 24
+    const minute = Number(at[2] ?? 0)
+    if (at[3] === 'pm' && hour < 12) {
+      hour += 12
+    }
+    if (at[3] === 'am' && hour === 12) {
+      hour = 0
+    }
+    const when = new Date(now)
+    when.setHours(hour, minute, 0, 0)
+    if (when.getTime() <= now) {
+      when.setDate(when.getDate() + 1)
+    }
+    return when.getTime()
+  }
+
+  return null
+}
+
+// Whether a timed or plain mute holds at `now`.
+export function isMuted(conf: SpeakSettings, now: number): boolean {
+  return conf.muted || conf.mutedUntil > now
+}
+
+// "15:30" for a mute ending today, else "Mon 15:30".
+export function untilText(when: number, now: number): string {
+  const d = new Date(when)
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+
+  return new Date(now).toDateString() === d.toDateString() ? hm : `${d.toDateString().slice(0, 3)} ${hm}`
+}
+
+// A short spoken preview of what a tool wants to do, for a permission alert.
+export function permissionText(tool: string, input: unknown): string {
+  const args = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {}
+  const str = (k: string) => (typeof args[k] === 'string' ? (args[k] as string) : '')
+  const file = (k: string) => str(k).split('/').filter(Boolean).pop() ?? ''
+  switch (tool) {
+    case 'Bash': {
+      const what = str('description') || str('command').split('\n')[0]?.slice(0, 80) || 'a command'
+      return `I need permission to run: ${what}.`
+    }
+    case 'Edit':
+    case 'MultiEdit':
+    case 'Write':
+    case 'NotebookEdit':
+      return `I need permission to ${tool === 'Write' ? 'write' : 'edit'} ${file('file_path') || file('notebook_path') || 'a file'}.`
+    case 'WebFetch':
+      return `I need permission to fetch ${str('url').replace(/^https?:\/\/(www\.)?/, '').split('/')[0] || 'a page'}.`
+    default:
+      return `I need permission to use ${tool.replace(/^mcp__([^_]+)__/, '$1 ').replace(/[_-]+/g, ' ')}.`
+  }
+}
+
+// What is said when Claude asks a question with choices.
+export function questionText(input: unknown): string[] {
+  const qs = (input as { questions?: { question?: unknown; options?: { label?: unknown }[] }[] } | null)?.questions
+  if (!Array.isArray(qs)) {
+    return []
+  }
+
+  return qs.flatMap(q => {
+    const question = typeof q.question === 'string' ? q.question : ''
+    const labels = (q.options ?? []).map(o => (typeof o.label === 'string' ? o.label.replace(/\s*\(Recommended\)/i, ', recommended') : '')).filter(Boolean)
+    return question ? [`I have a question: ${question}`, ...(labels.length ? [`Options: ${labels.join('; ')}.`] : [])] : []
+  })
 }

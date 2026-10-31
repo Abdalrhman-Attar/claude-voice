@@ -2,7 +2,17 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { completeSentences, fitting, parseStatus, pausesFor, toSentences, windowStart } from '../hooks/sentences'
+import {
+  completeSentences,
+  fitting,
+  parseMute,
+  parseStatus,
+  pausesFor,
+  permissionText,
+  questionText,
+  toSentences,
+  windowStart,
+} from '../hooks/sentences'
 
 const texts = (answer: string) => toSentences(answer).map(s => s.text)
 
@@ -15,6 +25,7 @@ const PANE = {
   view: {},
 } as const
 
+const NOW = new Date(2026, 9, 31, 14, 0).getTime()
 const OK = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
 
 type Host = {
@@ -35,6 +46,7 @@ function fakeHost(on: On, { history = [] as string[], settings = {}, inFront = f
   on('turn.complete', () => ({ text: '' }))
   on('telemetry.mark', () => ({ value: undefined }))
   on('session.id', () => ({ value: 'sess' }))
+  on('clock.now', () => ({ value: NOW }))
   on('session.cwd', () => ({ value: '/work/My Project' }))
   on('env.get', (_$, e) => ({ value: ({ HOME: '/home/me', __CFBundleIdentifier: 'com.example.term' } as Record<string, string>)[e.name] }))
   on('fs.read', (_$, e) => {
@@ -77,7 +89,43 @@ async function settle($: Engine) {
 }
 
 test('splits markdown into sentences', () => {
-  expect(texts('**Hi** there. Run `x`!\n- item one\n```\ncode\n```')).toEqual(['Hi there.', 'Run x!', 'item one'])
+  expect(texts('**Hi** there. Run `x`!\n- item one\n```\ncode\n```')).toEqual(['Hi there.', 'Run x!', 'item one', 'Code block, one line.'])
+})
+
+test('says what a code block or table is instead of reading it', () => {
+  expect(texts('See:\n```python\na = 1\nb = 2\n```\nThen.')).toEqual(['See: Python code, 2 lines.', 'Then.'])
+  expect(texts('```bash\nnpm test\n```')).toEqual(['Shell command.'])
+  expect(texts('![a diagram](x.png) and [the docs](https://x.dev).')).toEqual(['a diagram and the docs.'])
+})
+
+test('keeps snake_case and abbreviations whole', () => {
+  expect(texts('The speak_pane plugin, _really_. Use e.g. this vs. that. Next.')).toEqual([
+    'The speak_pane plugin, really.',
+    'Use e.g. this vs. that.',
+    'Next.',
+  ])
+})
+
+test('parses mute durations', () => {
+  expect(parseMute('', NOW)).toBe(Infinity)
+  expect(parseMute('off', NOW)).toBe(0)
+  expect(parseMute('30m', NOW)).toBe(NOW + 30 * 60_000)
+  expect(parseMute('for 2 hours', NOW)).toBe(NOW + 2 * 3_600_000)
+  expect(parseMute('until 3pm', NOW)).toBe(new Date(2026, 9, 31, 15, 0).getTime())
+  expect(parseMute('until 9:30', NOW)).toBe(new Date(2026, 10, 1, 9, 30).getTime())
+  expect(parseMute('soon', NOW)).toBe(null)
+})
+
+test('alert wording', () => {
+  expect(permissionText('Bash', { command: 'rm -rf build', description: 'Remove the build folder' })).toBe(
+    'I need permission to run: Remove the build folder.',
+  )
+  expect(permissionText('Edit', { file_path: '/a/b/server.py' })).toBe('I need permission to edit server.py.')
+  expect(permissionText('mcp__github__create_issue', {})).toBe('I need permission to use github create issue.')
+  expect(questionText({ questions: [{ question: 'Which one?', options: [{ label: 'A (Recommended)' }, { label: 'B' }] }] })).toEqual([
+    'I have a question: Which one?',
+    'Options: A, recommended; B.',
+  ])
 })
 
 test('a label with a colon stays with its text', () => {
@@ -91,8 +139,10 @@ test('a label with a colon stays with its text', () => {
   ).toEqual(['Splitting: one split was wrong.', '"Steps to check:" followed by "1. Does it play?" was cut after "1., and it now stays.'])
 })
 
-test('drops table rows', () => {
-  expect(texts('Before.\n| a | b |\n|---|---|\n| 1 | 2 |\nAfter.')).toEqual(['Before.', 'After.'])
+test('a table is said as its size', () => {
+  expect(texts('Before.\n| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\nAfter.')).toEqual(['Before.', 'Table, 2 rows.', 'After.'])
+  // Still being written: held back until it ends.
+  expect(completeSentences('Before.\n| a | b |\n|---|---|\n| 1 | 2 |\n', false).map(s => s.text)).toEqual(['Before.'])
 })
 
 test('tags sentences with their paragraph', () => {
@@ -228,6 +278,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
       awayOnly: true,
       summarize: true,
       live: true,
+      projectVoices: false,
+      mutedUntil: 0,
     })
   })
 
@@ -357,4 +409,47 @@ test('/hush stops every session', async ($, on) => {
   })
 
   expect(host.sent).toEqual([{ mode: 'stop', all: true, session: 'sess', label: 'My Project' }])
+})
+
+test('/mute for a while stops speech and mutes until then', async ($, on) => {
+  const host = fakeHost(on)
+  const run = (args: string) =>
+    $.command.run({ command: 'mute', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const settings = () => JSON.parse(host.files['/home/me/.claude/kokoro/settings.json'] ?? '{}')
+
+  await run('30m')
+  expect(host.sent.map(r => r.mode)).toEqual(['stop'])
+  expect(settings().mutedUntil).toBe(NOW + 30 * 60_000)
+  await reply($, 'Quiet now.')
+  await settle($)
+  expect(host.sent).toHaveLength(1)
+
+  await run('off')
+  expect(settings()).toMatchObject({ muted: false, mutedUntil: 0 })
+})
+
+test('a permission prompt is said ahead of other speech when away', async ($, on) => {
+  const host = fakeHost(on)
+  on('classic.PermissionRequest', () => ({}))
+  const ask = () =>
+    $.classic.PermissionRequest({ permission_mode: 'default', tool_name: 'Bash', tool_input: { command: 'ls', description: 'List files' } })
+
+  await ask()
+  await settle($)
+  expect(host.sent.map(({ session, label, ...r }) => r)).toEqual([
+    { mode: 'reply', urgent: true, sentences: ['I need permission to run: List files.'], ref: null },
+  ])
+
+  host.inFront = true
+  await ask()
+  await settle($)
+  expect(host.sent).toHaveLength(1)
+})
+
+test('a long turn ends with All done when away', async ($, on) => {
+  const host = fakeHost(on)
+  await $.turn.complete({ answer: 'Fixed it.', durationMs: 45000, isAborted: false, turnId: 't9', reason: 'answer' })
+  await settle($)
+
+  expect(host.sent.map(r => r.sentences)).toEqual([['Fixed it.'], ['All done.']])
 })
