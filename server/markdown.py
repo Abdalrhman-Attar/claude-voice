@@ -41,7 +41,10 @@ def to_sentences(answer):
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])", "", text)  # emphasis, not snake_case
-    text = re.sub(r"[*#`>|]", "", text)
+    text = re.sub(r"^\s*#+\s*", "", text, flags=re.M)  # headings
+    text = re.sub(r"(?<!\w)#(?![\w])", "", text)  # a lone #, but not #42, C# or #channel
+    text = re.sub(r"(?<!\|)\|(?!\|)", "", text)  # a table border, but not ||
+    text = re.sub(r"[*`>]", "", text)
     text = re.sub(r"^\s*[-+]\s+", "", text, flags=re.M)
 
     lines = [(l.strip(), para) for para, block in enumerate(re.split(r"\n\s*\n", text))

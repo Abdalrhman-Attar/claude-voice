@@ -50,13 +50,20 @@ def lang_for(voice):
     return LANGS.get(voice[:1], "en-us")
 
 
-def pronounce(text):
-    """Swaps words for spellings Kokoro says right, per pronounce.json (re-read each time)."""
-    try:
-        path = LEXICON if os.path.exists(LEXICON) else DEFAULT_LEXICON
-        words = {k: v for k, v in json.load(open(path)).items() if not k.startswith("_")}
-    except Exception:
-        return text
+def lexicon():
+    """The person's pronounce.json, with the default list's words they do not have (re-read each time)."""
+    words = {}
+    for path in (DEFAULT_LEXICON, LEXICON):
+        try:
+            words.update({k: v for k, v in json.load(open(path)).items() if not k.startswith("_")})
+        except Exception:
+            pass
+    return words
+
+
+def pronounce(text, words=None):
+    """Swaps words for spellings Kokoro says right, per the lexicon."""
+    words = lexicon() if words is None else words
     if not words:
         return text
     keys = sorted(words, key=len, reverse=True)
@@ -103,6 +110,9 @@ SYMBOLS = [
     (re.compile(r"\s*(?:≥|>=)\s*"), " at least "),
     (re.compile(r"\s*(?:≤|<=)\s*"), " at most "),
     (re.compile(r"\s*≠\s*|\s*!==?\s*"), " not equal to "),
+    (re.compile(r"\s+===?\s+"), " equals "),
+    (re.compile(r"\s*\|\|\s*"), " or "),
+    (re.compile(r"\s*&&\s*"), " and "),
     (re.compile(r"\s*≈\s*"), " about "),
     (re.compile(r"\s+&\s+|&amp;"), " and "),
     (re.compile(r"(?<=\d)\s*%"), " percent"),
@@ -123,6 +133,61 @@ def symbols(text):
     return text
 
 
+MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+          "November", "December"]
+UNITS = {"ms": "milliseconds", "px": "pixels", "fps": "frames per second", "Hz": "hertz", "kHz": "kilohertz",
+         "MHz": "megahertz", "GHz": "gigahertz", "kbps": "kilobits per second", "Mbps": "megabits per second",
+         "Gbps": "gigabits per second", "KB": "kilobytes", "kB": "kilobytes", "MB": "megabytes", "GB": "gigabytes",
+         "TB": "terabytes", "min": "minutes", "k": "thousand", "K": "thousand"}
+UNIT = re.compile(r"\b(\d+(?:\.\d+)?)\s?(" + "|".join(sorted(UNITS, key=len, reverse=True)) + r")\b")
+IP = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+PORT = re.compile(r"\b(localhost|\d{1,3}(?:\.\d{1,3}){3}):(\d{2,5})\b")
+DATE = re.compile(r"\b(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b")
+TIME = re.compile(r"(?<![\w:.])(\d{1,2}):([0-5]\d)(?::[0-5]\d)?(?![\w:])")
+MONEY = re.compile(r"\$(\d[\d,]*(?:\.\d+)?)(?:\s?([kKMB])\b)?")
+SCALE = {"k": "thousand", "K": "thousand", "M": "million", "B": "billion"}
+ISSUE = re.compile(r"(?<![\w&])#(\d+)\b")
+VER = re.compile(r"\bv(\d+(?:\.\d+)*)\b")
+PAIR = re.compile(r"\b([A-Z]{1,5})/([A-Z]{1,5})\b")  # CI/CD, I/O, UI/UX
+PLURAL = re.compile(r"(?<!')\b([A-Z]{2,5})s\b")  # PRs, APIs, IDs: the s is otherwise dropped
+KEYS = re.compile(r"\b(Cmd|Ctrl|Shift|Alt|Opt|Option|Command|Control|Fn|Meta|Win)\+(?=\w)")  # Cmd+K, Ctrl+Shift+P
+
+
+def spell(letters):
+    """An acronym letter by letter; a lone A is otherwise read as the word "a"."""
+    return " ".join("eigh" if c == "A" else c for c in letters)
+
+
+def clock(m):
+    """3:15 as "3 15", 3:05 as "3 oh 5", 3:00 as "3 o'clock"."""
+    hour, minutes = int(m.group(1)), m.group(2)
+    if minutes == "00":
+        return f"{hour} o'clock"
+    return f"{hour} oh {minutes[1]}" if minutes[0] == "0" else f"{hour} {minutes}"
+
+
+def numbers(text):
+    """Dates, times, money, units, versions, issue numbers, IP addresses and ports, said as words."""
+    text = PORT.sub(lambda m: f"{m.group(1)} port {m.group(2)}", text)
+    text = IP.sub(lambda m: m.group(0).replace(".", " dot "), text)
+    text = DATE.sub(lambda m: f"{MONTHS[int(m.group(2)) - 1]} {int(m.group(3))}, {m.group(1)}", text)
+    text = TIME.sub(clock, text)
+    text = MONEY.sub(lambda m: f"{m.group(1)} {SCALE[m.group(2)] + ' ' if m.group(2) else ''}dollars", text)
+    text = UNIT.sub(lambda m: f"{m.group(1)} {UNITS[m.group(2)]}", text)
+    text = VER.sub(r"version \1", text)
+    text = ISSUE.sub(r"number \1", text)
+    return text
+
+
+def acronyms(text, words):
+    """CI/CD as two acronyms, w/ and w/o as words, and plural acronyms with their s."""
+    text = re.sub(r"\bw/o\b", "without", text)
+    text = re.sub(r"\bw/(?=\s)", "with", text)
+    text = PAIR.sub(r"\1 \2", text)
+    text = KEYS.sub(r"\1 ", KEYS.sub(r"\1 ", text))  # twice: Ctrl+Shift+P
+    return PLURAL.sub(lambda m: m.group(0) if m.group(1) in words else spell(m.group(1)) + "'s", text)
+
+
 VERSION = re.compile(r"\b\d+(?:\.\d+){1,3}\b")
 DOTTED = re.compile(r"\b([A-Za-z_][\w-]*)\.(?=[A-Za-z_\d])")  # server.py, careem.com
 
@@ -135,15 +200,19 @@ def speakable(text):
     text = PATH.sub(lambda m: m.group(1), text)
     text = FILE_REF.sub("", text)
     text = FILE_LINE.sub(r"\1 line \2", text)
+    text = numbers(text)
     text = re.sub(r"```.*?```", " ", text, flags=re.S)
     text = re.sub(r"(?<=[A-Za-z0-9])_(?=[A-Za-z0-9])", " ", text)  # snake_case is said as two words
     text = symbols(text)
-    text = re.sub(r"[*#`_>|]", "", text)
+    text = re.sub(r"(?<!\w)#(?!\w)", "", text)  # a lone #, but not C# (the lexicon says it)
+    text = re.sub(r"[*`_>|]", "", text)
     text = re.sub(r"\s{2,}", " ", text)
-    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"\s+([,.;:!?])(?=\s|$)", r"\1", text)  # "works , nice" but not ".NET"
     text = LIVE.sub(lambda m: m.group(1) + "yve", text)
     text = re.sub(r":\s*$", ".", text)  # a label ending in a colon is said as a full sentence
-    text = pronounce(text).strip()
+    words = lexicon()
+    text = acronyms(text, words)
+    text = pronounce(text, words).strip()
     text = VERSION.sub(lambda m: m.group(0).replace(".", " point "), text)
     text = DOTTED.sub(r"\1 dot ", text)
     # Kokoro can stutter on the last sound of a sentence that ends without punctuation.

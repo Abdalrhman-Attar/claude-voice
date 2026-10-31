@@ -52,7 +52,10 @@ export function toSentences(answer: string): Sentence[] {
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])/g, '') // emphasis, not snake_case
-    .replace(/[*#`>|]/g, '')
+    .replace(/^\s*#+\s*/gm, '') // headings
+    .replace(/(?<!\w)#(?!\w)/g, '') // a lone #, but not #42, C# or #channel
+    .replace(/(?<!\|)\|(?!\|)/g, '') // a table border, but not ||
+    .replace(/[*`>]/g, '')
     .replace(/^\s*[-+]\s+/gm, '')
 
   const lines = text

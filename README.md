@@ -114,13 +114,15 @@ Sending a message stops the current reply.
 
 ## Pronunciation
 
-Add words to `~/.claude/kokoro/pronounce.json`, as the word mapped to how it should sound:
+Built-in rules read tech text the way people say it: plural acronyms ("PRs", "APIs"), units ("200ms", "4GB", "60fps"), dates ("2026-10-31"), times ("3:15"), money ("$20", "$1.5k"), versions ("v2.1.0"), issue numbers ("#42"), IP addresses and ports ("localhost:3000"), pairs like "CI/CD" and "I/O", key combinations ("Cmd+K"), operators ("==", "&&", "||"), paths, links and secrets.
+
+A word list (`server/pronounce.default.json`, about 100 entries such as RAM, JSON, CLI, Redis, Vite, ESLint, C#) fixes the rest. Add your own words to `~/.claude/kokoro/pronounce.json`, as the word mapped to how it should sound; they add to and override the built-in list:
 
 ```json
 { "Careem": "kareem", "kubectl": "cube control" }
 ```
 
-Changes apply to the next sentence.
+Changes apply to the next sentence. [`docs/voice-test.md`](docs/voice-test.md) has a test text that exercises every rule.
 
 ## Files
 
