@@ -11,9 +11,11 @@ Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagl
 - **Live highlight.** The sentence being spoken turns green.
 - **Tech-aware.** Paths read as file names, links as their site, versions as "1 point 2", `snake_case` as two words, symbols like → and ≥ as words, code blocks and tables as a short note ("Python code, 12 lines"), and a pronunciation list (RAM, JSON, macOS, ...) you can extend.
 - **Secrets stay quiet.** API keys, bearer tokens and `--token` values are read as "redacted".
-- **Tells you when it is waiting.** When you are away from the terminal, permission prompts, questions and plans are said aloud ahead of everything else, and a long turn ends with "All done."
+- **Work updates or just the answer.** Hear the notes Claude writes between tool calls too, or turn work updates off to hear only the final reply.
+- **Tells you when it is waiting.** Claude's questions are always said aloud, ahead of everything else. When you are away from the terminal, permission prompts and plans are too, and a long turn ends with "All done."
 - **Several sessions.** Replies queue instead of talking over each other, with a short "From <project>" label, and each project can have its own voice.
-- **Settings in the pane.** Voice, speed, mute, speak only when you are away from the terminal, summaries of long replies. British voices get British pronunciation.
+- **Settings in the pane.** Voice, speed, mute, speak only when you are away from the terminal, speak while typing, work updates, summaries of long replies. British voices get British pronunciation.
+- **Other agents and editors.** Codex, Gemini CLI, Cursor and any MCP client can use the same voice, and a VS Code extension shows every reply with a sentence player.
 - **Timed mute.** `/mute 30m`, `/mute 2h`, `/mute until 3pm`, `/mute off`.
 
 ## Install
@@ -51,14 +53,23 @@ Open the pane with `/speak` (it opens by itself in a terminal 144 columns or wid
 
 ## VS Code extension
 
-`vscode/` holds **Claude Voice**, a VS Code extension (also works in Cursor and Windsurf): a Replies panel in the activity bar with every recent reply from every agent, click a sentence to read from it, the spoken sentence highlighted, controls in the status bar and keyboard shortcuts (ctrl+cmd+. stop, ctrl+cmd+, pause, ctrl+cmd+/ skip; ctrl+alt on Windows and Linux).
+![The Claude Voice panel in VS Code](docs/vscode-panel.png)
+
+**Claude Voice** (in `vscode/`) adds a Replies panel to VS Code, Cursor and Windsurf. It uses VS Code's own icons and your theme's colors.
+
+- **Sessions and replies.** A session picker, grouped by agent (Claude Code, Codex, Gemini CLI, Cursor), keeps two sessions in the same folder apart; "Follow latest" switches to whichever spoke last. By default only sessions working in the window's folder are listed.
+- **Sentence player.** Click a sentence to read from it; on hover, ▷ reads just that sentence and ⏩ reads to the end. The spoken sentence is highlighted and kept in view.
+- **Controls everywhere.** Play all, pause, skip and stop in the panel, the status bar, and the keyboard: ctrl+cmd+. stop, ctrl+cmd+, pause, ctrl+cmd+/ skip (ctrl+alt on Windows and Linux).
+- **Settings** in collapsible sections (Voice, When to speak, Sessions), shared with the Claude Code plugin.
+
+Install the `.vsix` from the [latest release](https://github.com/Abdalrhman-Attar/claude-voice/releases/latest), or build it:
 
 ```sh
 cd vscode && npm install && npm run package
-code --install-extension claude-voice-0.1.0.vsix
+code --install-extension claude-voice-*.vsix          # add --profile <name> if you use a VS Code profile
 ```
 
-It reads `replies.json` and `status.json` in `~/.claude/kokoro`, which the voice server writes, and shares `settings.json` with the Claude Code plugin.
+The extension shows and replays replies; speaking them as they arrive is done by the Claude Code plugin and the agent hooks. If the voice is not set up yet, run **Claude Voice: Set up the voice** from the command palette. `npm test` in `vscode/` runs its integration tests in a real VS Code.
 
 ## Other agents
 
@@ -112,8 +123,9 @@ Changes apply to the next sentence.
 | Where | What |
 | --- | --- |
 | `hooks/` | the Claude Code plugin (pane, live speech, settings) |
-| `server/` | the voice server, its client and the chat history reader |
-| `~/.claude/kokoro/` | environment, models, `settings.json`, `pronounce.json`, `server.log` |
+| `server/` | the voice server and its client, the agent hooks and MCP server, the chat history reader, the installer helper |
+| `vscode/` | the Claude Voice extension for VS Code, Cursor and Windsurf |
+| `~/.claude/kokoro/` | environment, models, `settings.json`, `pronounce.json`, `replies.json`, `status.json`, `server.log` |
 
 ## Platform notes
 
