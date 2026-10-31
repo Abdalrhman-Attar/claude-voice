@@ -236,7 +236,7 @@ test('long replies are summarized when summaries are on', async ($, on) => {
   expect(host.sent.map(r => r.sentences)).toEqual([['Short summary.']])
 })
 
-for (const surface of ['terminal', 'desktop'] as const) {
+for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
   const mount = ($: Engine) => $.ui.mount({ plugin: 'speak-pane', surface, component: 'Pane', props: PANE, requestId: 'speak' })
 
   test(`playback buttons on ${surface}`, async ($, on) => {
@@ -382,7 +382,7 @@ test('muted streams nothing', async ($, on) => {
   expect(host.sent).toEqual([])
 })
 
-for (const surface of ['terminal', 'desktop'] as const) {
+for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
   test(`list scrolls while controls stay drawn on ${surface}`, async ($, on) => {
     fakeHost(on, { settings: { muted: true } })
     await reply($, Array.from({ length: 40 }, (_, i) => `Line ${i} here.`).join(' '))
