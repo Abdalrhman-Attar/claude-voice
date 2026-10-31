@@ -83,17 +83,23 @@
       }
       const row = document.createElement('div')
       row.className = 'sentence' + (live === i ? ' live' : '')
-      row.title = 'Read from here'
       row.dataset.index = String(i)
       const text = document.createElement('span')
       text.className = 'text'
       text.textContent = s.text
+      // Shown on hover (and on the spoken row): this sentence alone, or on to the end.
+      const actions = document.createElement('span')
+      actions.className = 'actions'
       const one = document.createElement('button')
-      one.className = 'one'
-      one.textContent = '▶'
+      one.textContent = '▶ Play'
       one.title = 'Read only this sentence'
       one.dataset.one = String(i)
-      row.append(text, one)
+      const from = document.createElement('button')
+      from.textContent = '⏩ From here'
+      from.title = 'Read from this sentence to the end'
+      from.dataset.from = String(i)
+      actions.append(one, from)
+      row.append(text, actions)
       box.appendChild(row)
     })
     const liveRow = live === null ? null : list.querySelector('.sentence.live')
@@ -175,6 +181,11 @@
     if (one) {
       e.stopPropagation()
       return vscode.postMessage({ type: 'playOne', id: reply.id, session: reply.session, index: Number(one.dataset.one) })
+    }
+    const from = e.target.closest('[data-from]')
+    if (from) {
+      e.stopPropagation()
+      return vscode.postMessage({ type: 'play', id: reply.id, session: reply.session, index: Number(from.dataset.from) })
     }
     const row = e.target.closest('.sentence')
     if (row) vscode.postMessage({ type: 'play', id: reply.id, session: reply.session, index: Number(row.dataset.index) })

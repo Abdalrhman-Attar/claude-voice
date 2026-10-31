@@ -82,14 +82,15 @@ main {
 }
 .sentence:hover { background: var(--vscode-list-hoverBackground); }
 .sentence .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.sentence .one {
-  visibility: hidden;
+.sentence .actions {
+  display: flex;
+  gap: 4px;
   flex: none;
-  padding: 0 6px;
-  font-size: 0.85em;
-  line-height: 1.6;
+  opacity: 0;
+  transition: opacity 80ms ease-out;
 }
-.sentence:hover .one, .sentence.live .one { visibility: visible; }
+.sentence .actions button { padding: 0 7px; font-size: 0.85em; line-height: 1.7; }
+.sentence:hover .actions, .sentence.live .actions, .sentence:focus-within .actions { opacity: 1; }
 .sentence.live {
   background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-list-activeSelectionForeground, inherit);

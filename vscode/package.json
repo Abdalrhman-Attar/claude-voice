@@ -2,7 +2,7 @@
   "name": "claude-voice",
   "displayName": "Claude Voice",
   "description": "Hear Claude Code, Codex, Gemini and Cursor replies read aloud with a natural local voice, and replay any sentence.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "abdalrhman-attar",
   "license": "MIT",
   "icon": "media/icon.png",
