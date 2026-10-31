@@ -53,13 +53,15 @@ const liveTurns = new Map<string, LiveTurn>()
 type Paths = { python: string; tts: string; history: string; settings: string; status: string }
 
 // The server's code ships in this plugin (server/); its data (venv, models, settings, status)
-// lives in KOKORO_HOME, ~/.claude/kokoro by default.
+// lives in KOKORO_HOME, ~/.claude/kokoro by default (%USERPROFILE%\.claude\kokoro on Windows).
 async function paths($: EngineInterface): Promise<Paths> {
-  const home = (await $.env.get('KOKORO_HOME')) ?? `${(await $.env.get('HOME')) ?? ''}/.claude/kokoro`
+  const windows = (await $.env.get('OS')) === 'Windows_NT'
+  const user = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
+  const home = (await $.env.get('KOKORO_HOME')) ?? `${user}/.claude/kokoro`
   const code = `${$.plugin.root}/server`
 
   return {
-    python: `${home}/.venv/bin/python`,
+    python: windows ? `${home}/.venv/Scripts/python.exe` : `${home}/.venv/bin/python`,
     tts: `${code}/tts.py`,
     history: `${code}/history.py`,
     settings: `${home}/settings.json`,
@@ -114,12 +116,10 @@ async function shouldSpeak($: EngineInterface, conf: SpeakSettings): Promise<boo
   return !conf.awayOnly || (await isAway($))
 }
 
-// Whether the terminal running this session is not the app in front.
+// Whether the terminal running this session is not the window in front. On macOS the terminal
+// is named by its bundle id; elsewhere tts.py finds our own window among its parent processes.
 async function isAway($: EngineInterface): Promise<boolean> {
-  const terminal = await $.env.get('__CFBundleIdentifier')
-  if (!terminal) {
-    return true
-  }
+  const terminal = (await $.env.get('__CFBundleIdentifier')) ?? ''
   const p = await paths($)
 
   return (await $.process.run([p.python, p.tts, '--check-away', terminal])).exitCode === 0

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-# Kokoro TTS server: keeps the model loaded, listens on a unix socket.
+# Kokoro TTS server: keeps the model loaded, listens on a local socket (see transport.py).
 # Each connection sends one JSON request (see handle); replies queue across sessions.
 # Progress is written to status.json for the Speak pane. Exits after IDLE_TIMEOUT idle.
 #
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
-import json, os, re, socket, sys, threading, time, queue, zlib
+import json, os, re, signal, socket, sys, threading, time, queue, zlib
+import transport
 from collections import OrderedDict
 
 CODE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.environ.get("KOKORO_HOME", os.path.expanduser("~/.claude/kokoro"))
-SOCK = os.path.join(HOME, "kokoro.sock")
 LEXICON = os.path.join(HOME, "pronounce.json")
 DEFAULT_LEXICON = os.path.join(CODE, "pronounce.default.json")
 SETTINGS = os.path.join(HOME, "settings.json")
@@ -568,25 +568,11 @@ def parse(data):
     return {"text": text, "mode": "play" if text.strip() else "stop", "all": True}
 
 
-def bind():
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        s.bind(SOCK)
-    except OSError:
-        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            probe.connect(SOCK)
-            raise SystemExit(0)  # another server is already running
-        except (ConnectionRefusedError, FileNotFoundError):
-            os.unlink(SOCK)  # stale socket from a dead server
-            s.bind(SOCK)
-    s.listen(4)
-    s.settimeout(15)
-    return s
-
-
 if __name__ == "__main__":
-    server = bind()
+    if sys.stderr is None:  # pythonw on Windows has no stderr: log to the file directly
+        sys.stderr = open(LOG, "a", buffering=1)
+    server, token = transport.listen()
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))  # so the socket and port file are removed
     try:
         import numpy as np
         import sounddevice as sd
@@ -614,12 +600,11 @@ if __name__ == "__main__":
                 data = b""
                 while chunk := conn.recv(65536):
                     data += chunk
-            handle(parse(data))
+            req = parse(data)
+            if token and req.pop("token", None) != token:
+                continue  # TCP is open to every local user: only our own clients carry the token
+            handle(req)
             last_active = time.time()
     finally:
-        server.close()
-        try:
-            os.unlink(SOCK)
-        except FileNotFoundError:
-            pass
+        transport.close(server)
         write_status(session="", ref=None, index=None, state="idle")

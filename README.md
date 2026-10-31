@@ -1,6 +1,6 @@
 # claude-voice
 
-Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a natural-sounding voice that runs entirely on your Mac. No account, no API key, nothing leaves your machine.
+Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a natural-sounding voice that runs entirely on your computer. No account, no API key, nothing leaves your machine.
 
 - **Speaks while it types.** Each sentence is read as soon as it is written.
 - **Speak pane.** Every reply as a list of sentences: play one, read from any line on, pause, skip, stop, switch between replies, reload the whole chat.
@@ -14,7 +14,9 @@ Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagl
 
 ## Install
 
-Requires macOS, Python 3.10 to 3.12 and about 350 MB for the voice model.
+Works on macOS (Apple Silicon and Intel), Linux (x86_64 and arm64) and Windows (x64 and ARM64). Needs Python 3.10 to 3.13 (3.12 or newer on Windows ARM) and about 350 MB for the voice model.
+
+**macOS and Linux**
 
 ```sh
 git clone https://github.com/Abdalrhman-Attar/claude-voice.git
@@ -22,7 +24,17 @@ cd claude-voice
 ./install.sh
 ```
 
-The installer creates `~/.claude/kokoro` (Python environment, model files, settings), starts the voice server at login, and binds **ctrl+x s** to Stop.
+On Linux, playback needs PortAudio: `sudo apt install libportaudio2` (Fedora: `sudo dnf install portaudio`).
+
+**Windows** (PowerShell)
+
+```powershell
+git clone https://github.com/Abdalrhman-Attar/claude-voice.git
+cd claude-voice
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+The installer creates `~/.claude/kokoro` (Python environment, model files, settings), starts the voice server at login (a LaunchAgent on macOS, a systemd user service on Linux, a Run entry on Windows), and binds **ctrl+x s** to Stop.
 
 Then, in Claude Code:
 
@@ -69,10 +81,16 @@ Changes apply to the next sentence.
 | `server/` | the voice server, its client and the chat history reader |
 | `~/.claude/kokoro/` | environment, models, `settings.json`, `pronounce.json`, `server.log` |
 
+## Platform notes
+
+- **Only when away** checks whether your terminal is the window in front. On macOS it asks the system which app is in front. On Windows and Linux (X11, with `xdotool` or `xprop`) it looks for its own terminal among the processes above Claude. On Wayland, or inside tmux on Linux, it cannot tell, so it treats you as away.
+- On Windows the client and server talk over a localhost port, with a random token only your user can read. Elsewhere they use a unix socket.
+
 ## Uninstall
 
 ```sh
-./install.sh --uninstall
+./install.sh --uninstall                                      # macOS, Linux
+powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   # Windows
 ```
 
 then `/plugin uninstall speak-pane` and delete `~/.claude/kokoro`.
