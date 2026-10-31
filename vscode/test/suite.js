@@ -32,6 +32,8 @@ exports.run = async function () {
   }
   const savedSettings = fs.readFileSync(settingsFile, 'utf8')
 
+  const config = vscode.workspace.getConfiguration('claudeVoice')
+  await config.update('onlyThisWorkspace', false, vscode.ConfigurationTarget.Global) // the feed's replies are elsewhere
   const ext = vscode.extensions.getExtension('abdalrhman-attar.claude-voice')
   const api = await ext.activate()
 
@@ -88,6 +90,13 @@ exports.run = async function () {
     assert.strictEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).speed, 1.3)
     await api.panelMessage({ type: 'setting', key: 'workUpdates', value: false })
     assert.strictEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).workUpdates, false)
+  })
+  await step('lists only replies from this window\'s folder, or all sessions', async () => {
+    assert.strictEqual(api.visible(), api.replies(), 'all sessions: every reply')
+    await config.update('onlyThisWorkspace', true, vscode.ConfigurationTarget.Global)
+    await until('only this (empty) folder', () => api.visible() === 0)
+    await config.update('onlyThisWorkspace', false, vscode.ConfigurationTarget.Global)
+    await until('all sessions again', () => api.visible() === api.replies())
   })
   await step('mute toggles the shared settings', async () => {
     const before = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).muted === true

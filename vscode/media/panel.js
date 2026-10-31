@@ -62,7 +62,9 @@
     if (!reply) {
       const p = document.createElement('div')
       p.className = 'empty'
-      p.textContent = 'Replies from Claude Code, Codex, Gemini and Cursor show up here as they arrive.'
+      p.textContent = state.allSessions || !state.folder
+        ? 'Replies from Claude Code, Codex, Gemini and Cursor show up here as they arrive.'
+        : `Replies from sessions working in ${state.folder} show up here as they arrive. Tick All sessions to see every session.`
       list.appendChild(p)
       return
     }
@@ -148,6 +150,7 @@
     $('speed').value = String(speed)
     $('speedOut').textContent = `${speed.toFixed(1)}×`
     $('autoSpeak').checked = !state.muted
+    $('allSessions').checked = state.allSessions === true
     $('awayOnly').checked = c.awayOnly === true
     $('live').checked = c.live !== false
     $('workUpdates').checked = c.workUpdates !== false
@@ -205,6 +208,11 @@
   $('speed').addEventListener('input', e => ($('speedOut').textContent = `${Number(e.target.value).toFixed(1)}×`))
   $('speed').addEventListener('change', e => setting('speed', Math.round(Number(e.target.value) * 10) / 10))
   $('autoSpeak').addEventListener('change', e => setting('muted', !e.target.checked))
+  $('allSessions').addEventListener('change', e => {
+    selected = null // the list changes: follow its latest reply
+    vscode.setState({ selected })
+    vscode.postMessage({ type: 'allSessions', value: e.target.checked })
+  })
   for (const id of ['awayOnly', 'live', 'workUpdates', 'projectVoices', 'summarize']) {
     $(id).addEventListener('change', e => setting(id, e.target.checked))
   }

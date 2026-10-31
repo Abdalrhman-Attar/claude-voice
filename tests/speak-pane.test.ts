@@ -229,6 +229,7 @@ test('every finished reply is recorded for the VS Code panel, muted or not', asy
       reply: { id: 't1', sentences: [{ text: 'First.', para: 0, line: 0 }, { text: 'Second.', para: 0, line: 0 }] },
       session: 'sess',
       label: 'My Project',
+      cwd: '/work/My Project',
     },
   ])
 })

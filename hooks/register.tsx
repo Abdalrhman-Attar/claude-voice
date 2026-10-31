@@ -78,7 +78,12 @@ async function paths($: EngineInterface): Promise<Paths> {
 async function send($: EngineInterface, request: Request) {
   const p = await paths($)
   const cwd = await $.session.cwd()
-  const body = { ...request, session: await $.session.id(), label: cwd.split('/').filter(Boolean).pop() ?? '' }
+  const body = {
+    ...request,
+    session: await $.session.id(),
+    label: cwd.split('/').filter(Boolean).pop() ?? '',
+    ...(request.mode === 'record' ? { cwd } : {}), // the VS Code panel lists the open folder's replies
+  }
   await $.process.run([p.python, p.tts, '--json'], { stdin: JSON.stringify(body), timeoutMs: 30000 })
 }
 

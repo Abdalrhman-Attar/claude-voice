@@ -562,6 +562,7 @@ def record(req):
     except Exception:
         feed = []
     entry = {"id": str(reply["id"]), "session": req.get("session", ""), "label": req.get("label", ""),
+             "cwd": req.get("cwd", ""),
              "agent": reply.get("agent", "claude"), "t": time.time(), "sentences": reply["sentences"]}
     feed = [r for r in feed if not (r.get("id") == entry["id"] and r.get("session") == entry["session"])]
     feed = (feed + [entry])[-FEED_KEEP:]

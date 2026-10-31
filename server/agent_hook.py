@@ -17,13 +17,13 @@ def project(path):
 
 
 def event(agent, data):
-    """(kind 'reply' or 'alert', text, session, project) from an agent's hook payload, or None."""
+    """(kind "reply" or "alert", text, session, folder) from an agent's hook payload, or None."""
     if agent == "codex":
         if data.get("type") != "agent-turn-complete":
             return None
-        return "reply", data.get("last-assistant-message") or "", data.get("thread-id", ""), project(data.get("cwd"))
+        return "reply", data.get("last-assistant-message") or "", data.get("thread-id", ""), data.get("cwd") or ""
     if agent == "gemini":
-        where = project(data.get("cwd"))
+        where = data.get("cwd") or ""
         if data.get("hook_event_name") == "Notification":
             message = data.get("message") or ""
             tool = message.removeprefix("Tool ").split(" requires ")[0] if message.startswith("Tool ") else ""
@@ -32,7 +32,7 @@ def event(agent, data):
         return "reply", data.get("prompt_response") or "", data.get("session_id", ""), where
     if agent == "cursor":
         roots = data.get("workspace_roots") or [""]
-        return "reply", data.get("text") or "", data.get("conversation_id", ""), project(roots[0])
+        return "reply", data.get("text") or "", data.get("conversation_id", ""), roots[0] or ""
     return None
 
 
@@ -52,8 +52,8 @@ def work(req):
     away settings, hands the request to tts.py."""
     tts = os.path.join(CODE, "tts.py")
     if req.get("record"):
-        run([sys.executable, tts, "--json"], json.dumps({"mode": "record", "session": req["session"],
-                                                         "label": req["label"], "reply": req.pop("record")}))
+        run([sys.executable, tts, "--json"], json.dumps({"mode": "record", "session": req["session"], "label": req["label"],
+                                                         "cwd": req.pop("cwd", ""), "reply": req.pop("record")}))
     conf = settings()
     if conf.get("muted") or conf.get("mutedUntil", 0) > time.time() * 1000:
         return
@@ -63,9 +63,10 @@ def work(req):
     run([sys.executable, tts, "--json"], json.dumps(req))
 
 
-def request(agent, kind, text, session, where):
+def request(agent, kind, text, session, cwd):
     from markdown import pauses_for, to_sentences
 
+    where = project(cwd)
     label = f"{agent.capitalize()} in {where}" if where else agent.capitalize()
     if kind == "alert":
         return {"mode": "reply", "urgent": True, "alert": True, "sentences": [text], "ref": None,
@@ -79,7 +80,7 @@ def request(agent, kind, text, session, where):
     ref = f"{agent}:{session}:{int(time.time() * 1000)}"
     full = to_sentences(text)
     return {"mode": "reply", "sentences": [s[0] for s in sentences], "pauses": pauses_for(sentences), "ref": ref,
-            "offset": 0, "session": f"{agent}:{session}", "label": label,
+            "offset": 0, "session": f"{agent}:{session}", "label": label, "cwd": cwd,
             "record": {"id": ref, "agent": agent,
                        "sentences": [{"text": t, "para": p, "line": l} for t, p, l in full]}}
 

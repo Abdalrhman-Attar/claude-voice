@@ -10,7 +10,7 @@ import * as path from 'path'
 import * as vscode from 'vscode'
 
 type Sentence = { text: string; para: number; line?: number }
-type Reply = { id: string; session: string; label: string; agent: string; t: number; sentences: Sentence[] }
+type Reply = { id: string; session: string; label: string; cwd?: string; agent: string; t: number; sentences: Sentence[] }
 type Status = { session?: string; ref?: string | null; index?: number | null; state?: string }
 type Settings = Record<string, unknown>
 
@@ -27,6 +27,10 @@ function python(): string {
   return process.platform === 'win32'
     ? path.join(home(), '.venv', 'Scripts', 'python.exe')
     : path.join(home(), '.venv', 'bin', 'python')
+}
+
+function onlyThisWorkspace(): boolean {
+  return vscode.workspace.getConfiguration('claudeVoice').get<boolean>('onlyThisWorkspace', true)
 }
 
 function readJson<T>(file: string, fallback: T): T {
@@ -123,10 +127,17 @@ class Store {
     if (changed) this.listeners.forEach(fn => fn())
   }
 
+  // Replies from sessions working in one of this window's folders (or a folder inside one), unless
+  // every session is asked for. Replies recorded before folders were kept match by project name.
   visibleReplies(): Reply[] {
-    if (!vscode.workspace.getConfiguration('claudeVoice').get<boolean>('onlyThisWorkspace')) return this.replies
-    const names = (vscode.workspace.workspaceFolders ?? []).map(f => f.name)
-    return this.replies.filter(r => names.some(n => r.label === n || r.label.endsWith(` in ${n}`)))
+    const folders = vscode.workspace.workspaceFolders ?? []
+    if (!onlyThisWorkspace() || folders.length === 0) return this.replies
+    const inside = (cwd: string, root: string) => cwd === root || cwd.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
+    return this.replies.filter(r =>
+      r.cwd
+        ? folders.some(f => inside(path.normalize(r.cwd ?? ''), path.normalize(f.uri.fsPath)))
+        : folders.some(f => r.label === f.name || r.label.endsWith(` in ${f.name}`)),
+    )
   }
 
   saveSettings(change: Settings) {
@@ -177,6 +188,8 @@ class RepliesView implements vscode.WebviewViewProvider {
       status: this.store.status,
       settings: this.store.settings,
       muted: this.store.muted(),
+      allSessions: !onlyThisWorkspace(),
+      folder: (vscode.workspace.workspaceFolders ?? []).map(f => f.name).join(', '),
       ready: this.voice.ready(),
     })
   }
@@ -201,6 +214,10 @@ class RepliesView implements vscode.WebviewViewProvider {
           return this.store.saveSettings({ muted: msg.value === true, mutedUntil: 0 })
         }
         return msg.key && this.store.saveSettings({ [msg.key]: msg.value })
+      case 'allSessions':
+        return vscode.workspace
+          .getConfiguration('claudeVoice')
+          .update('onlyThisWorkspace', msg.value !== true, vscode.ConfigurationTarget.Global)
       case 'setup':
         return vscode.commands.executeCommand('claudeVoice.setup')
     }
@@ -223,6 +240,7 @@ export type Api = {
   panelReady: () => boolean
   statusText: () => string
   replies: () => number
+  visible: () => number
   latest: () => Reply | undefined
   panelMessage: (msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) => unknown
 }
@@ -278,6 +296,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     panelReady: () => view.panelReady,
     statusText: () => bar.text,
     replies: () => store.replies.length,
+    visible: () => store.visibleReplies().length,
     latest,
     panelMessage: msg => view.receive(msg),
   }
