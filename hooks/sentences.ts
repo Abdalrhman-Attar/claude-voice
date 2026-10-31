@@ -157,10 +157,14 @@ export function fitting(sentences: Sentence[], top: number, rows: number, width:
   return n
 }
 
-// The first sentence shown: `top`, unless the sentence being spoken is outside the window.
+// The first sentence shown: `top`, unless the sentence being spoken is outside the window. The
+// window's last sentence counts as outside (the estimate runs long when sentences wrap, so it
+// may be cut off), so the list turns its page as that sentence starts, not after it ends.
 export function windowStart(sentences: Sentence[], top: number, live: number | null, rows: number, width: number): number {
   const start = Math.min(Math.max(0, top), Math.max(0, sentences.length - 1))
-  if (live === null || (live >= start && live < start + fitting(sentences, start, rows, width))) {
+  const shown = fitting(sentences, start, rows, width)
+  const safe = live === sentences.length - 1 ? shown : Math.max(1, shown - 1)
+  if (live === null || (live >= start && live < start + safe)) {
     return start
   }
 

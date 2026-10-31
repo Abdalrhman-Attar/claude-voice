@@ -194,8 +194,9 @@ async function streamStep($: EngineInterface, live: LiveTurn, ref: string, text:
 }
 
 // Mirrors the server's progress into state and the status line, only when it changes.
-async function poll($: EngineInterface, me: string) {
-  const next = parseStatus(await $.fs.read((await paths($)).status).catch(() => undefined), me)
+async function poll($: EngineInterface) {
+  // The id is asked each time: compacting a conversation gives the session a new one.
+  const next = parseStatus(await $.fs.read((await paths($)).status).catch(() => undefined), await $.session.id())
   const prev = await read($, playback)
   if (JSON.stringify(prev) !== JSON.stringify(next)) {
     await update($, playback, () => next)
@@ -227,8 +228,7 @@ export const register: Register = on => {
     })
     void $.ui.open({ id: PANE, title: 'Speak' })
     void loadSettings($)
-    const me = await $.session.id()
-    $.clock.every(POLL_MS, () => void poll($, me))
+    $.clock.every(POLL_MS, () => void poll($))
 
     return next(e)
   })

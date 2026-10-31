@@ -190,7 +190,9 @@ test('windows the list and follows the spoken sentence', () => {
   expect(fitting(list, 0, 5, 40)).toBe(5)
   expect(windowStart(list, 0, null, 5, 40)).toBe(0)
   expect(windowStart(list, 0, 3, 5, 40)).toBe(0)
+  expect(windowStart(list, 0, 4, 5, 40)).toBe(3) // the window's last row may be cut off: turn now
   expect(windowStart(list, 0, 12, 5, 40)).toBe(11)
+  expect(windowStart(list.slice(0, 5), 0, 4, 5, 40)).toBe(0) // the reply's last sentence, fully shown
 })
 
 test('reads server status for this session only', () => {
