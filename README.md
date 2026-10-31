@@ -122,6 +122,8 @@ A word list (`server/pronounce.default.json`, about 100 entries such as RAM, JSO
 { "Careem": "kareem", "kubectl": "cube control" }
 ```
 
+Arabic text is said by your system's Arabic voice, since Kokoro has none: Majed on macOS, an installed Arabic voice on Windows (Settings, Time & language, Speech), or `espeak-ng` on Linux. A mostly Arabic sentence is read whole in that voice; Arabic words inside an English sentence are cut in. With no Arabic voice, Arabic text is skipped.
+
 Changes apply to the next sentence. [`docs/voice-test.md`](docs/voice-test.md) has a test text that exercises every rule.
 
 ## Files

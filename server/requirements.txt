@@ -1,6 +1,8 @@
 kokoro-onnx==0.6.1
 sounddevice
 numpy
+# Certificates for downloading the model (python.org builds on macOS have none of their own).
+certifi
 # Intel Macs: onnxruntime stopped shipping x86_64 macOS wheels after 1.23.
 onnxruntime<1.24; sys_platform == "darwin" and platform_machine == "x86_64"
 # Linux and Windows: finding whether our terminal window is in front.

@@ -6,7 +6,7 @@
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
-import transport
+import system_voice, transport
 from transcripts import Watcher
 from collections import OrderedDict
 
@@ -198,6 +198,10 @@ def speakable(text):
     text = TABLE_LINE.sub(" ", text)
     text = URL.sub(lambda m: m.group(1), text)
     text = PATH.sub(lambda m: m.group(1), text)
+    if system_voice.mostly_arabic(text):
+        # Said by the system's Arabic voice, which reads its own numbers: only markup goes.
+        text = re.sub(r"```.*?```", " ", text, flags=re.S)
+        return re.sub(r"\s{2,}", " ", re.sub(r"[*`_>|#]", "", text)).strip()
     text = FILE_REF.sub("", text)
     text = FILE_LINE.sub(r"\1 line \2", text)
     text = numbers(text)
@@ -223,7 +227,7 @@ def speakable(text):
 
 # Not a sentence end: "e.g. this", "vs. that", "Dr. Smith".
 NOT_END = "".join(f"(?<!\\b{re.escape(a)})" for a in ["e.g.", "i.e.", "vs.", "Dr.", "Mr.", "Mrs.", "Ms.", "St.", "cf.", "approx."])
-SENTENCE_END = re.compile(r"(?<=[.!?;])" + NOT_END + r"\s+|\n+")
+SENTENCE_END = re.compile(r"(?<=[.!?;\u061F])" + NOT_END + r"\s+|\n+")
 
 
 def chunks(text):
@@ -263,7 +267,7 @@ def trim_log():
 
 
 def write_status(**fields):
-    tmp = STATUS + ".tmp"
+    tmp = f"{STATUS}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp, "w") as f:
         json.dump({**fields, "t": time.time()}, f)
     os.replace(tmp, STATUS)
@@ -379,14 +383,31 @@ def synth(said, voice, speed):
         if hit is not None:
             cache.move_to_end(key)
             return hit
-        samples, rate = kokoro.create(said, voice=voice, speed=speed, lang=lang_for(voice))
-        audio = master(samples, rate)
+        audio = np.concatenate([master(*made) for made in voices_for(said, voice, speed)] or [np.zeros(0, "float32")])
         cache[key] = audio
         while len(cache) > CACHE_ITEMS:
             cache.popitem(last=False)
         return audio
 
 
+def voices_for(said, voice, speed):
+    """(samples, rate) for each piece of a sentence: Kokoro's voice, and the system's for Arabic."""
+    out = []
+    for text, arabic in system_voice.pieces(said):
+        if not arabic:
+            out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
+            continue
+        made = system_voice.synth(text, speed)
+        if made is None:
+            if not warned_no_voice:
+                warned_no_voice.append(True)
+                log("no Arabic system voice installed: Arabic text is skipped")
+        else:
+            out.append(made)
+    return out
+
+
+warned_no_voice = []
 MAX_PAUSE = 2.0  # seconds; a longer requested pause is cut to this
 
 
@@ -644,7 +665,7 @@ def record(req):
              "agent": reply.get("agent", "claude"), "t": time.time(), "sentences": reply["sentences"]}
     feed = [r for r in feed if not (r.get("id") == entry["id"] and r.get("session") == entry["session"])]
     feed = (feed + [entry])[-FEED_KEEP:]
-    tmp = FEED + ".tmp"
+    tmp = f"{FEED}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp, "w") as f:
         json.dump(feed, f)
     os.replace(tmp, FEED)
@@ -688,7 +709,7 @@ def on_title(session, title):
         for r in feed:
             if r.get("session") == session:
                 r["title"] = title
-        tmp = FEED + ".tmp"
+        tmp = f"{FEED}.{os.getpid()}.{threading.get_ident()}.tmp"
         with open(tmp, "w") as f:
             json.dump(feed, f)
         os.replace(tmp, FEED)

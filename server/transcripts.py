@@ -33,7 +33,7 @@ class Watcher:
         self.on_title = on_title
         self.projects = projects
         self.sessions = {}
-        self.started = time.time()
+        self.ends = None  # path -> size at the first scan: older content is never spoken
 
     def start(self):
         threading.Thread(target=self.run, daemon=True).start()
@@ -49,17 +49,26 @@ class Watcher:
 
     def scan(self, now=None):
         now = now or time.time()
+        first = self.ends is None
+        if first:
+            self.ends = {}
         for path in glob.glob(os.path.join(self.projects, "*", "*.jsonl")):
             try:
                 st = os.stat(path)
             except OSError:
                 continue
+            if first:
+                self.ends[path] = st.st_size
             s = self.sessions.get(path)
             if s is None:
-                if now - st.st_mtime > RECENT:
-                    continue
-                # A file seen at start-up is followed from its end; one created later from its start.
-                s = Session(path, st.st_size if st.st_mtime < self.started else 0)
+                if path in self.ends:
+                    # Seen at start-up: followed from where it ended then, once it is in use again
+                    # (an old session resumed later must not have its whole history read out).
+                    if now - st.st_mtime > RECENT and st.st_size == self.ends[path]:
+                        continue
+                    s = Session(path, self.ends[path])
+                else:
+                    s = Session(path, 0)  # created since start-up
                 self.sessions[path] = s
                 self.read_title(s)
             if st.st_size > s.offset:

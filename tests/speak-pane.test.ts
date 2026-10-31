@@ -519,3 +519,12 @@ test('a question is said at the terminal too, ahead of other speech', async ($, 
     { mode: 'reply', urgent: true, sentences: ['I have a question: Which port?', 'Options: 80; 8080.'], ref: null },
   ])
 })
+
+test('Arabic lines are kept and end at the Arabic question mark', () => {
+  expect(texts('مرحبا بك. هل تريد المتابعة؟ نعم\n\nNext step.')).toEqual([
+    'مرحبا بك.',
+    'هل تريد المتابعة؟',
+    'نعم',
+    'Next step.',
+  ])
+})

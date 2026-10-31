@@ -1,7 +1,7 @@
 # How the client and server reach each other: a unix socket where the platform has one,
 # else a localhost TCP port. The TCP port and a random token are written to kokoro.port in
 # KOKORO_HOME (private to the user), and every request must carry that token.
-import json, os, secrets, socket
+import json, os, secrets, socket, time
 
 HOME = os.environ.get("KOKORO_HOME", os.path.expanduser("~/.claude/kokoro"))
 SOCK = os.path.join(HOME, "kokoro.sock")
@@ -10,33 +10,57 @@ USE_UNIX = hasattr(socket, "AF_UNIX") and os.name != "nt" and os.environ.get("KO
 
 
 owned = {}  # path -> what it held when this server wrote it, so close() removes only its own
+LOCK = os.path.join(HOME, "server.lock")
+LOCK_WAIT = 10  # seconds a new server waits for one that is shutting down
+_lock = None  # held open for the server's whole life
 
 
 class NotRunning(Exception):
     """No server is listening."""
 
 
+def try_lock(f):
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def single():
+    """Holds the server lock, or SystemExit when another server keeps it. Only the holder touches
+    the socket, so two servers started at once can never both run (each would speak every reply)."""
+    global _lock
+    os.makedirs(HOME, exist_ok=True)
+    f = open(LOCK, "a+")
+    deadline = time.time() + LOCK_WAIT
+    while not try_lock(f):
+        if time.time() > deadline:
+            raise SystemExit(0)  # another server is running
+        time.sleep(0.2)
+    _lock = f
+
+
 def listen():
-    """The server's listening socket, or SystemExit when another server already listens."""
+    """The server's listening socket, or SystemExit when another server is running."""
+    single()
     if USE_UNIX:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            s.bind(SOCK)
-        except OSError:
-            try:
-                connect()[0].close()
-                raise SystemExit(0)  # another server is already running
-            except NotRunning:
-                os.unlink(SOCK)  # stale socket from a dead server
-                s.bind(SOCK)
+            os.unlink(SOCK)  # left by a server that died: we hold the lock, so it is not live
+        except FileNotFoundError:
+            pass
+        s.bind(SOCK)
         token = ""
         owned[SOCK] = os.stat(SOCK).st_ino
     else:
-        try:
-            connect()[0].close()
-            raise SystemExit(0)
-        except NotRunning:
-            pass
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("127.0.0.1", 0))
         token = secrets.token_hex(16)

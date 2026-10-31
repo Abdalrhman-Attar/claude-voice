@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as root:
     os.makedirs(os.path.join(root, "proj"))
     path = os.path.join(root, "proj", "sess-1.jsonl")
     w = transcripts.Watcher(lambda *a: replies.append(a), lambda s, t: titles.append(t), projects=root)
-    w.started = time.time() - 60  # the file is new: read from its start
+    w.scan()  # start-up: the file is created after it, so it is read from its start
     with open(path, "w") as f:
         f.write(line(type="user", cwd="/work/shop", message={"content": "fix the login"}))
         f.write(assistant("m1", [{"type": "text", "text": "Let me look."}], "tool_use"))
@@ -42,4 +42,24 @@ with tempfile.TemporaryDirectory() as root:
     w.scan(now + 10)
     w.scan(now + 20)
     assert [r[4] for r in replies] == ["Fixed the login.\n\nTests pass.", "You're welcome."], replies
+
+# An old session, quiet at start-up and resumed later, is read from where it ended, not replayed.
+replies = []
+with tempfile.TemporaryDirectory() as root:
+    os.makedirs(os.path.join(root, "proj"))
+    path = os.path.join(root, "proj", "old.jsonl")
+    with open(path, "w") as f:
+        f.write(line(type="user", message={"content": "long ago"}))
+        f.write(assistant("o1", [{"type": "text", "text": "Old reply."}], "end_turn"))
+    old = time.time() - 3600
+    os.utime(path, (old, old))
+    w = transcripts.Watcher(lambda *a: replies.append(a), lambda s, t: None, projects=root)
+    w.scan()
+    with open(path, "a") as f:
+        f.write(line(type="user", message={"content": "back again"}))
+        f.write(assistant("o2", [{"type": "text", "text": "New reply."}], "end_turn"))
+    now = time.time()
+    w.scan(now)
+    w.scan(now + transcripts.SETTLE + 0.1)
+    assert [r[4] for r in replies] == ["New reply."], replies
 print("transcripts: all checks pass")

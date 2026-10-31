@@ -3,7 +3,7 @@
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
 #   install_helper.py install [--agents codex,gemini,cursor,mcp] | uninstall
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
-import json, os, shutil, subprocess, sys, urllib.request
+import json, os, shutil, ssl, subprocess, sys, urllib.request
 
 CODE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.environ.get("KOKORO_HOME", os.path.expanduser("~/.claude/kokoro"))
@@ -20,13 +20,24 @@ UNIT = "claude-kokoro-voice.service"  # Linux systemd user unit
 RUN_KEY = "ClaudeKokoroVoice"  # Windows HKCU Run value
 
 
+def tls():
+    """Certificates for the download. Python from python.org on macOS ships without any until its
+    Install Certificates step is run, so certifi's bundle is used when it is there."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 def download():
     for name in ("kokoro-v1.0.onnx", "voices-v1.0.bin"):
         path = os.path.join(HOME, name)
         if os.path.exists(path) and os.path.getsize(path) > 0:
             continue
         print(f"Downloading {name}")
-        with urllib.request.urlopen(f"{MODELS}/{name}") as r, open(path + ".part", "wb") as f:
+        with urllib.request.urlopen(f"{MODELS}/{name}", context=tls()) as r, open(path + ".part", "wb") as f:
             total, done = int(r.headers.get("Content-Length") or 0), 0
             while chunk := r.read(1 << 20):
                 f.write(chunk)

@@ -41,7 +41,10 @@ function describeTable(rows: string): string {
 }
 
 // A sentence end, except after a quoted list number ("1. Does") or an abbreviation ("e.g. this").
-const SENTENCE_END = /(?<=[.!?])(?<![“"'(]\d{1,3}\.)(?<!\b(?:e\.g|i\.e|vs|Dr|Mr|Mrs|Ms|St|cf|approx)\.)\s+/
+const SENTENCE_END = /(?<=[.!?\u061F])(?<![“"'(]\d{1,3}\.)(?<!\b(?:e\.g|i\.e|vs|Dr|Mr|Mrs|Ms|St|cf|approx)\.)\s+/
+
+// A piece with none of these has nothing to say (Arabic letters count).
+const SPOKEN = /[a-zA-Z0-9\u0600-\u06FF]/
 
 // Turns a markdown reply into speakable sentences, each tagged with its paragraph and line.
 // Code blocks and tables become one short sentence saying what is there.
@@ -61,7 +64,7 @@ export function toSentences(answer: string): Sentence[] {
   const lines = text
     .split(/\n\s*\n/)
     .flatMap((block, para) => block.split(/\n+/).map(l => ({ l: l.trim(), para })))
-    .filter(x => /[a-zA-Z0-9]/.test(x.l))
+    .filter(x => SPOKEN.test(x.l))
   // A short label line ending in a colon ("Fix:") joins the line after it.
   const joined: { l: string; para: number }[] = []
   for (let i = 0; i < lines.length; i++) {
@@ -82,7 +85,7 @@ export function toSentences(answer: string): Sentence[] {
       // Not at a colon ("Fix: the server") or after a quoted list number ("1. Does").
       .split(SENTENCE_END)
       .map(s => s.trim())
-      .filter(s => /[a-zA-Z0-9]/.test(s))
+      .filter(s => SPOKEN.test(s))
       // A list number left by a joined label ("Steps: 1.") goes back with its item.
       .reduce<string[]>((acc, s) => {
         const last = acc[acc.length - 1]

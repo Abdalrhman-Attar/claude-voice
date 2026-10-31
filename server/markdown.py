@@ -10,13 +10,14 @@ LANGUAGES = {
     "rust": "Rust", "rs": "Rust", "swift": "Swift", "kotlin": "Kotlin", "dart": "Dart", "java": "Java",
     "ruby": "Ruby", "rb": "Ruby", "diff": "diff", "toml": "TOML", "md": "markdown", "markdown": "markdown",
 }
+SPOKEN = r"[A-Za-z0-9\u0600-\u06FF]"  # a piece with nothing to say has none of these
 PARAGRAPH_PAUSE = 0.5
 LINE_PAUSE = 0.25
 
 # A sentence end, except after a quoted list number ("1. Does") or an abbreviation ("e.g. this").
 _NOT_AFTER = ["e.g.", "i.e.", "vs.", "Dr.", "Mr.", "Mrs.", "Ms.", "St.", "cf.", "approx."]
 SENTENCE_END = re.compile(
-    r"(?<=[.!?])(?<![“\"'(]\d\.)(?<![“\"'(]\d\d\.)(?<![“\"'(]\d\d\d\.)"
+    r"(?<=[.!?\u061F])(?<![“\"'(]\d\.)(?<![“\"'(]\d\d\.)(?<![“\"'(]\d\d\d\.)"
     + "".join(f"(?<!\\b{re.escape(a)})" for a in _NOT_AFTER) + r"\s+")
 
 
@@ -48,7 +49,7 @@ def to_sentences(answer):
     text = re.sub(r"^\s*[-+]\s+", "", text, flags=re.M)
 
     lines = [(l.strip(), para) for para, block in enumerate(re.split(r"\n\s*\n", text))
-             for l in re.split(r"\n+", block) if re.search(r"[A-Za-z0-9]", l)]
+             for l in re.split(r"\n+", block) if re.search(SPOKEN, l)]
     # A short label line ending in a colon ("Fix:") joins the line after it.
     joined = []
     i = 0
@@ -66,7 +67,7 @@ def to_sentences(answer):
         parts = []
         for s in SENTENCE_END.split(l[len(marker):]):
             s = s.strip()
-            if not re.search(r"[A-Za-z0-9]", s):
+            if not re.search(SPOKEN, s):
                 continue
             if parts and re.search(r":\s*\d+[.)]$", parts[-1]):
                 parts[-1] = f"{parts[-1]} {s}"  # "Steps: 1." goes back with its item
