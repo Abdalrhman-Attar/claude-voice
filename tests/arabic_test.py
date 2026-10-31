@@ -45,6 +45,20 @@ assert pieces("Numbers: الساعة الآن 10.", whole=False) == [("Numbers: 
 assert read("افْتَحْ") == "إِفْتَحْ"
 assert read("ثُمّ") == shadda_first("ثُمَّ")
 
+# Numbers as Arabic words, for MagpieTTS.
+import arabic_numbers  # noqa: E402
+
+assert arabic_numbers.words(2026) == "ألفان وستة وعشرون"
+assert arabic_numbers.words(3000) == "ثلاثة آلاف"
+assert arabic_numbers.words(2500000) == "مليونان وخمسمئة ألف"
+assert arabic_numbers.spell_numbers("عندي 3 ملفات و25 اختبارا") == "عندي ثلاثة ملفات وخمسة وعشرون اختبارا"
+assert arabic_numbers.spell_numbers("السرعة 3.5 و١٢ وv2") == "السرعة ثلاثة فاصلة خمسة واثنا عشر وv2"
+
+# Magpie's runtime is chosen per platform; Windows on ARM and others without a build fall back to Nabra.
+import magpie  # noqa: E402
+
+assert all(name.startswith("nemo-speech-0.3.0-") and len(digest) == 64 for name, digest in magpie.BUILDS.values())
+
 # Shakkelha itself, when its weights are installed here (run with the voice's Python for NumPy).
 import importlib.util  # noqa: E402
 

@@ -6,8 +6,10 @@
     'af_heart', 'af_bella', 'af_nicole', 'af_sky', 'af_sarah', 'af_nova',
     'am_michael', 'am_adam', 'am_fenrir', 'am_puck', 'bf_emma', 'bf_isabella', 'bm_george', 'bm_lewis',
   ]
-  // Nabra's own voice first; Kokoro's voices also work with it (Nabra is a Kokoro fine-tune).
-  const ARABIC_VOICES = [
+  // Arabic voices: MagpieTTS's when it is installed, then Nabra's (its own, or a Kokoro voice:
+  // Nabra is a Kokoro fine-tune). '' is the default: Magpie's Jason, or Nabra's own voice.
+  const MAGPIE_VOICES = [['Jason', 'Jason (male)'], ['Leo', 'Leo (male)'], ['John', 'John (male)'], ['Sofia', 'Sofia (female)'], ['Aria', 'Aria (female)']]
+  const NABRA_VOICES = [
     ['af_msa', 'Nabra (female)'], ['am_onyx', 'Onyx (male)'], ['am_adam', 'Adam (male)'], ['bm_lewis', 'Lewis (male)'],
     ['am_michael', 'Michael (male)'], ['af_heart', 'Heart (female)'], ['bf_emma', 'Emma (female)'],
   ]
@@ -245,16 +247,26 @@
     }
     voice.value = typeof c.voice === 'string' ? c.voice : 'af_heart'
     const arabic = $('arabicVoice')
-    if (!arabic.options.length) {
-      ARABIC_VOICES.forEach(([v, name]) => {
-        const o = document.createElement('option')
-        o.value = v
-        o.textContent = name
-        arabic.appendChild(o)
+    const groups = [state.magpie ? ['MagpieTTS', MAGPIE_VOICES] : null, state.nabra ? ['Nabra', NABRA_VOICES] : null].filter(Boolean)
+    const shape = groups.map(([label]) => label).join()
+    if (arabic.dataset.shape !== shape) {
+      arabic.replaceChildren()
+      groups.forEach(([label, voices]) => {
+        const group = document.createElement('optgroup')
+        group.label = label
+        voices.forEach(([v, name]) => {
+          const o = document.createElement('option')
+          o.value = v
+          o.textContent = name
+          group.appendChild(o)
+        })
+        arabic.appendChild(group)
       })
+      arabic.dataset.shape = shape
     }
-    arabic.value = ARABIC_VOICES.some(([v]) => v === c.arabicVoice) ? c.arabicVoice : 'af_msa'
-    $('arabicRow').hidden = state.arabic !== true
+    const known = groups.flatMap(([, voices]) => voices.map(([v]) => v))
+    arabic.value = known.includes(c.arabicVoice) ? c.arabicVoice : known[0] || ''
+    $('arabicRow').hidden = groups.length === 0
     voice.disabled = c.projectVoices === true
     voice.title = c.projectVoices === true ? 'Each project has its own voice (Sessions)' : ''
     const speed = typeof c.speed === 'number' ? c.speed : 1.1

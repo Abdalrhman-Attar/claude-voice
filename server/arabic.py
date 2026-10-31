@@ -193,6 +193,30 @@ def reading(vowelled):
     return TAA_AT_END.sub("\u0647\u0652", text)  # ـة without its ending is said "-ah"
 
 
+_shakkelha = None
+
+
+def vowelled(text):
+    """Text with Shakkelha's harakat, as written (case endings and all), or as it was without it."""
+    global _shakkelha
+    if not has_shakkelha():
+        return text
+    with _lock:
+        if _shakkelha is None:
+            from shakkelha import Shakkelha
+
+            _shakkelha = Shakkelha(os.path.join(DIR, "shakkelha.npz"))
+        return _shakkelha(text)
+
+
+def for_magpie(text):
+    """What MagpieTTS is given: numbers as words (it skips digits in Arabic), then full harakat,
+    which it reads more accurately than bare text."""
+    from arabic_numbers import spell_numbers
+
+    return vowelled(spell_numbers(text))
+
+
 def synth(text, speed, voice=OWN_VOICE):
     """(samples, rate) of Arabic text read by Nabra in the given voice, or None when it is not installed."""
     global _model

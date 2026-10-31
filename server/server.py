@@ -6,7 +6,7 @@
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
-import arabic as arabic_voice, system_voice, transport
+import arabic as arabic_voice, magpie, system_voice, transport
 from transcripts import Watcher
 from collections import OrderedDict
 
@@ -408,7 +408,7 @@ CACHE_ITEMS = 160  # sentences kept ready to play again (a few MB)
 cache = OrderedDict()
 
 
-def synth(said, voice, speed, arabic=arabic_voice.OWN_VOICE):
+def synth(said, voice, speed, arabic=""):
     """A sentence's audio at the device rate, from the cache when it was made before."""
     key = (said, voice, speed, arabic)
     with model_lock:
@@ -424,19 +424,26 @@ def synth(said, voice, speed, arabic=arabic_voice.OWN_VOICE):
 
 
 def voices_for(said, voice, speed, arabic):
-    """(samples, rate) for each piece of a sentence: Kokoro's voice, and for Arabic Nabra's or the system's."""
+    """(samples, rate) for each piece of a sentence: Kokoro's voice, and for Arabic Magpie's, Nabra's or the system's."""
     out = []
-    nabra = arabic_voice.installed()  # reads only Arabic: English words go to Kokoro
+    # Arabic is read by MagpieTTS when it is installed and no Nabra voice is chosen, else by Nabra,
+    # else by the system's voice. Nabra reads only Arabic, so English words go to Kokoro; the
+    # others take a mostly Arabic sentence whole.
+    use_magpie = magpie.installed() and (not arabic or arabic in magpie.VOICES)
+    nabra = not use_magpie and arabic_voice.installed()
     for text, is_arabic in system_voice.pieces(said, whole=not nabra):
         if not is_arabic:
             out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
             continue
         text = system_voice.letter_names(text)
+        made = None
         try:
-            made = arabic_voice.synth(text, speed, arabic) if nabra else None
+            if use_magpie:
+                made = magpie.synth(arabic_voice.for_magpie(text), arabic or magpie.DEFAULT_VOICE)
+            elif nabra:
+                made = arabic_voice.synth(text, speed, arabic or arabic_voice.OWN_VOICE)
         except Exception as err:
             log("arabic voice error:", err)
-            made = None
         if made is None:
             made = system_voice.synth(text, speed)
         if made is None:
@@ -505,7 +512,7 @@ class Job:
                 continue
             conf = settings()  # per sentence, so a voice or speed change applies right away
             try:
-                audio = synth(said, voice_for(conf, self.label), float(conf["speed"]), str(conf.get("arabicVoice") or arabic_voice.OWN_VOICE))
+                audio = synth(said, voice_for(conf, self.label), float(conf["speed"]), str(conf.get("arabicVoice") or ""))
             except Exception as err:
                 log("tts error:", err)
                 continue

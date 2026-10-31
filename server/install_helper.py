@@ -2,7 +2,7 @@
 # Second half of install.sh / install.ps1, run with the voice's own Python environment:
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
 #   install_helper.py install [--agents codex,gemini,cursor,mcp] [--arabic] | uninstall
-#   install_helper.py arabic         adds the Arabic voice (about 170 MB)
+#   install_helper.py arabic         adds the Arabic voice (about 700 MB)
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
 import json, os, shutil, ssl, subprocess, sys, urllib.request
 
@@ -52,24 +52,71 @@ def download():
             fetch(f"{MODELS}/{name}", path, name)
 
 
+def sha256(path):
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def magpie_runtime():
+    """NVIDIA's NeMo-Speech.cpp for this platform and the MagpieTTS model it runs, about 700 MB.
+    False where NVIDIA publishes no CPU or Metal build (Nabra is used there instead)."""
+    import tarfile, zipfile
+
+    sys.path.insert(0, CODE)
+    import magpie
+
+    found = magpie.build()
+    if not found:
+        return False
+    name, digest = found
+    if not magpie.binary():
+        os.makedirs(magpie.DIR, exist_ok=True)
+        archive = os.path.join(magpie.DIR, name)
+        fetch(f"{magpie.RELEASE}/{name}", archive, "the Arabic voice's runtime (NVIDIA NeMo-Speech.cpp)")
+        if sha256(archive) != digest:
+            os.remove(archive)
+            sys.exit("The NeMo-Speech.cpp download did not match its checksum; try again.")
+        target = os.path.join(magpie.DIR, "runtime")
+        if name.endswith(".zip"):
+            with zipfile.ZipFile(archive) as z:
+                z.extractall(target)
+        else:
+            with tarfile.open(archive) as t:
+                t.extractall(target, filter="data") if hasattr(tarfile, "data_filter") else t.extractall(target)
+        os.remove(archive)
+    if not os.path.exists(magpie.READY):
+        print("Downloading the Arabic voice (NVIDIA MagpieTTS)", flush=True)
+        env = {**os.environ, "NEMO_SPEECH_MODEL_DIR": magpie.MODELS}
+        if subprocess.run([magpie.binary(), "pull", "magpie"], env=env).returncode != 0:
+            sys.exit("Downloading MagpieTTS failed; try again.")
+        open(magpie.READY, "w").close()
+    return True
+
+
 def arabic():
-    """The Arabic voice (Nabra-82M) and its diacritizer (Shakkelha), about 170 MB."""
+    """The Arabic voice: MagpieTTS where NVIDIA's runtime runs, else Nabra-82M, and the Shakkelha
+    diacritizer for both."""
     sys.path.insert(0, CODE)
     import arabic as voice
 
     os.makedirs(voice.DIR, exist_ok=True)
+    nabra = not magpie_runtime()
     for name, url in voice.FILES.items():
+        if not nabra and name in ("nabra.onnx", "voices.bin", "tokens.txt"):
+            continue  # Magpie reads Arabic here; Nabra is only for platforms without it
         path = os.path.join(voice.DIR, name)
         if os.path.exists(path):
             continue
         fetch(url, path, {"nabra.onnx": "the Arabic voice", "shakkelha.npz": "the Arabic diacritizer"}.get(name, name))
         if name == "shakkelha.npz":
-            import hashlib
-
-            with open(path, "rb") as f:
-                if hashlib.sha256(f.read()).hexdigest() != voice.SHAKKELHA_SHA256:
-                    os.remove(path)
-                    sys.exit("The Arabic diacritizer download did not match its checksum; try again.")
+            if sha256(path) != voice.SHAKKELHA_SHA256:
+                os.remove(path)
+                sys.exit("The Arabic diacritizer download did not match its checksum; try again.")
     for old in (f for pair in voice.DIACRITIZERS for f in pair):  # CATT, which Shakkelha replaces
         if os.path.exists(os.path.join(voice.DIR, old)):
             os.remove(os.path.join(voice.DIR, old))
