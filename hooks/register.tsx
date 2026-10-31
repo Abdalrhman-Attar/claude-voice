@@ -557,12 +557,20 @@ export const register: Register = on => {
         `**Reply ${at + 1} of ${list.length}**`,
         isLatest ? '▶' : `[▶](${LINK}/reply/${at + 1}) · [latest](${LINK}/reply/${list.length - 1})`,
       ].join(' ')
-      // Each sentence on its own line, a blank line between paragraphs; ▸ plays it, » reads on from it.
-      const lines = sentences.slice(start, start + shown).map((s, k) => {
+      // One Markdown row per sentence (line breaks inside one block draw as uneven gaps there);
+      // a gap before a new paragraph. ▶ plays the sentence, » reads on from it.
+      const rows = sentences.slice(start, start + shown).map((s, k) => {
         const i = start + k
         const text = escapeMarkdown(s.text)
-        const row = `[▸](${LINK}/play/${i}) [»](${LINK}/from/${i}) ${live === i ? `**♪ ${text}**` : text}`
-        return (k > 0 && sentences[i - 1]?.para !== s.para ? '\n\n' : k > 0 ? '  \n' : '') + row
+        return (
+          <Box key={`line${i}`} marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
+            <Markdown
+              key={`row${i}`}
+              text={`[▶](${LINK}/play/${i}) [»](${LINK}/from/${i}) ${live === i ? `**♪ ${text}**` : text}`}
+              onLinkPress={onLink}
+            />
+          </Box>
+        )
       })
       const scroll = [
         start > 0 ? `[▲](${LINK}/up/${page})` : '',
@@ -586,7 +594,7 @@ export const register: Register = on => {
             </Box>
           </Box>
           <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden" marginTop={1}>
-            <Markdown key="sentences" text={lines.join('')} onLinkPress={onLink} />
+            {rows}
           </Box>
           <Box flexDirection="column" flexShrink={0}>
             {sentences.length > shown ? <Markdown key="scroll" text={scroll} dimColor onLinkPress={onLink} /> : null}

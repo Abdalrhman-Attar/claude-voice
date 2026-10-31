@@ -37,7 +37,7 @@ function tap(ui: Ui, surface: string, key: string, reply = 0) {
   }
   const sentence = /^([spf])(\d+)$/.exec(key)
   if (sentence) {
-    return ui.press({ key: 'sentences', link: { href: `${LINK}/${sentence[1] === 'f' ? 'from' : 'play'}/${sentence[2]}` } })
+    return ui.press({ key: `row${sentence[2]}`, link: { href: `${LINK}/${sentence[1] === 'f' ? 'from' : 'play'}/${sentence[2]}` } })
   }
   if (SETTING_LINKS.includes(key)) {
     return ui.press({ key: 'settings', link: { href: `${LINK}/${key}` } })
@@ -430,12 +430,11 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
       }
       return
     }
-    const listed = async () => String((await ui.find({ key: 'sentences' }))?.text ?? '')
-    expect(await listed()).toContain('Line 0 here.')
-    expect(await listed()).not.toContain('Line 39 here.')
+    expect(await ui.find({ key: 'row0' })).toBeDefined()
+    expect(await ui.find({ key: 'row39' })).toBeUndefined()
     const down = /\((https:\/\/speak\.local\/down\/\d+)\)/.exec(String((await ui.find({ key: 'scroll' }))?.text ?? ''))?.[1] ?? ''
     await ui.press({ key: 'scroll', link: { href: down } })
-    expect(await listed()).not.toContain('Line 0 here.')
+    expect(await ui.find({ key: 'row0' })).toBeUndefined()
     for (const key of ['all', 'pause', 'skip', 'stop', 'nav', 'settings', 'scroll']) {
       expect(await ui.find({ key })).toBeDefined()
     }
