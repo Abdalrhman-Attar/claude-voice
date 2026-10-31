@@ -28,14 +28,36 @@
     </div>
   </header>
 
+  <div id="pluginHint" class="hint" hidden>
+    <i class="codicon codicon-info"></i>
+    <span>Finished replies are read from Claude Code's sessions. Add the plugin to hear them while Claude types.</span>
+    <button class="link" id="installPlugin">Add plugin</button>
+    <button class="action" id="dismissHint" title="Dismiss" aria-label="Dismiss"><i class="codicon codicon-close"></i></button>
+  </div>
+
   <main id="list" tabindex="0" aria-label="Sentences"></main>
 
   <div id="setup" class="setup" hidden>
-    <i class="codicon codicon-unmute"></i>
-    <h2>Set up the voice</h2>
-    <p>Kokoro reads replies with a natural voice that runs entirely on your computer. Setup installs a few Python packages and a 350 MB model.</p>
-    <button class="button" id="runSetup">Set up the voice</button>
+    <i class="codicon codicon-unmute hero"></i>
+    <h2>Set up Read Aloud</h2>
+    <p>Claude's replies are read with Kokoro, a natural voice that runs entirely on your computer. One-time setup, about 400 MB.</p>
+    <ol class="steps" id="steps">
+      <li data-step="1">Python <small>found, or a private copy fetched with uv</small></li>
+      <li data-step="2">Voice packages</li>
+      <li data-step="3">Voice model <small>350 MB</small></li>
+      <li data-step="4">Start at login</li>
+      <li data-step="5">Claude Code plugin <small>speaks while Claude types</small></li>
+    </ol>
+    <div class="detail" id="setupDetail"></div>
+    <div class="setup-actions">
+      <button class="button" id="runSetup">Set up</button>
+      <button class="button secondary" id="testVoice" hidden><i class="codicon codicon-play"></i> Test the voice</button>
+      <button class="button" id="continue" hidden>Continue</button>
+      <button class="link" id="terminalSetup">Run in a terminal instead</button>
+    </div>
+    <details id="logBox"><summary>Show log</summary><pre id="log"></pre></details>
   </div>
+
 
   <footer>
     <section class="group" data-group="voice">
@@ -48,6 +70,10 @@
         <div class="setting">
           <label for="speed">Speed</label>
           <div class="slider"><input id="speed" type="range" min="0.7" max="1.6" step="0.1" /><output id="speedOut"></output></div>
+        </div>
+        <div class="setting">
+          <span class="spacer"></span>
+          <button class="button secondary small" id="testVoice2"><i class="codicon codicon-play"></i> Test the voice</button>
         </div>
       </div>
     </section>

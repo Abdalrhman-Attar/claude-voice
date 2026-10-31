@@ -7,6 +7,7 @@
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
 import transport
+from transcripts import Watcher
 from collections import OrderedDict
 
 CODE = os.path.dirname(os.path.abspath(__file__))
@@ -507,7 +508,11 @@ def handle(req):
     with cond:
         if session:
             seen[session] = now
-        if mode == "record":
+        if mode == "ping":
+            pass  # the VS Code extension keeps the server (and the session reader) running
+        elif mode == "record":
+            if req.get("session"):
+                plugin_sessions.add(req["session"])
             record(req)
         elif mode == "stop":
             if req.get("all"):
@@ -561,8 +566,9 @@ def record(req):
             feed = []
     except Exception:
         feed = []
-    entry = {"id": str(reply["id"]), "session": req.get("session", ""), "label": req.get("label", ""),
-             "cwd": req.get("cwd", ""),
+    session = req.get("session", "")
+    entry = {"id": str(reply["id"]), "session": session, "label": req.get("label", ""),
+             "cwd": req.get("cwd", ""), "title": titles.get(session, ""),
              "agent": reply.get("agent", "claude"), "t": time.time(), "sentences": reply["sentences"]}
     feed = [r for r in feed if not (r.get("id") == entry["id"] and r.get("session") == entry["session"])]
     feed = (feed + [entry])[-FEED_KEEP:]
@@ -570,6 +576,81 @@ def record(req):
     with open(tmp, "w") as f:
         json.dump(feed, f)
     os.replace(tmp, FEED)
+
+
+# Replies read from Claude Code's session files, for sessions the plugin is not in (it records
+# its own). The plugin's record of a reply arrives within moments of the file's, so each waits.
+PLUGIN_GRACE = 3.0
+titles = {}  # session -> Claude Code's title for it
+plugin_sessions = set()  # sessions the Claude Code plugin has recorded replies for
+AWAY_APPS = {"com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "com.apple.Terminal",
+             "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty",
+             "com.github.wez.wezterm", "io.alacritty"}
+
+
+def front_app_is_editor():
+    """macOS: whether an editor or terminal is in front (the person is reading already)."""
+    if sys.platform != "darwin":
+        return False
+    import subprocess
+    try:
+        front = subprocess.run(["lsappinfo", "front"], capture_output=True, text=True, timeout=2).stdout.strip()
+        info = subprocess.run(["lsappinfo", "info", "-only", "bundleid", front], capture_output=True, text=True,
+                              timeout=2).stdout
+        return any(f'"{app}"' in info for app in AWAY_APPS)
+    except Exception:
+        return False
+
+
+def on_title(session, title):
+    if titles.get(session) == title:
+        return
+    titles[session] = title
+    with cond:
+        try:
+            feed = json.load(open(FEED))
+        except Exception:
+            return
+        if not any(r.get("session") == session and r.get("title") != title for r in feed):
+            return
+        for r in feed:
+            if r.get("session") == session:
+                r["title"] = title
+        tmp = FEED + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(feed, f)
+        os.replace(tmp, FEED)
+
+
+def on_transcript_reply(session, cwd, title, reply_id, text):
+    threading.Timer(PLUGIN_GRACE, transcript_reply, args=(session, cwd, reply_id, text)).start()
+
+
+def transcript_reply(session, cwd, reply_id, text):
+    """Records, then speaks as the plugin would, a reply from a session the plugin is not in."""
+    from markdown import pauses_for, to_sentences
+
+    if session in plugin_sessions:
+        return
+    full = to_sentences(text)
+    if not full:
+        return
+    label = os.path.basename(os.path.normpath(cwd)) if cwd else ""
+    with cond:
+        record({"session": session, "label": label, "cwd": cwd,
+                "reply": {"id": reply_id, "agent": "claude",
+                          "sentences": [{"text": t, "para": p, "line": l} for t, p, l in full]}})
+    conf = settings()
+    if conf.get("muted") or conf.get("mutedUntil", 0) > time.time() * 1000:
+        return
+    if conf.get("awayOnly") and front_app_is_editor():
+        return
+    spoken = full
+    if conf.get("summarize", True) and sum(len(t) for t, _, _ in full) > 1200:
+        first = full[0][1]
+        spoken = [x for x in full if x[1] == first] + [("The rest is on screen.", first + 1, -1)]
+    handle({"mode": "reply", "session": session, "label": label, "ref": reply_id, "offset": 0,
+            "sentences": [t for t, _, _ in spoken], "pauses": pauses_for(spoken)})
 
 
 def worker():
@@ -612,6 +693,7 @@ if __name__ == "__main__":
         model_lock = threading.Lock()
         threading.Thread(target=worker, daemon=True).start()
         threading.Thread(target=keep_warm, daemon=True).start()
+        Watcher(on_transcript_reply, on_title).start()
         last_active = time.time()
         while True:
             try:

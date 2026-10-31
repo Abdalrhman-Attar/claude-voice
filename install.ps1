@@ -28,19 +28,32 @@ if (-not $Py -and (Get-Command python -ErrorAction SilentlyContinue)) {
   & python -c "import sys; sys.exit(not (3, 10) <= sys.version_info[:2] <= (3, 13))" 2>$null
   if ($LASTEXITCODE -eq 0) { $Py = @('python') }
 }
-if (-not $Py) {
-  Write-Host 'Python 3.10 to 3.13 is needed: winget install Python.Python.3.12'
-  exit 1
-}
-
 New-Item -ItemType Directory -Force -Path $HomeDir | Out-Null
-Write-Host "Python environment in $HomeDir\.venv"
-if (-not (Test-Path $VenvPy)) {
-  $exe = $Py[0]; $rest = @($Py | Select-Object -Skip 1)
-  & $exe @rest -m venv (Join-Path $HomeDir '.venv')
+$Venv = Join-Path $HomeDir '.venv'
+$Req = Join-Path $Repo 'server\requirements.txt'
+if (-not $Py) {
+  # No suitable Python: uv fetches a private Python 3.12 for the voice.
+  $Uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+  if (-not $Uv) {
+    Write-Host 'Python 3.10 to 3.13 not found: installing uv to fetch one (https://astral.sh/uv)'
+    $env:UV_NO_MODIFY_PATH = '1'
+    powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex" | Out-Null
+    $Uv = Join-Path $env:USERPROFILE '.local\bin\uv.exe'
+  }
+  if (-not (Test-Path $VenvPy)) { & $Uv venv -q --python 3.12 $Venv }
+  Write-Host "Python environment in $Venv"
+  Write-Host "Installing the voice's Python packages"
+  & $Uv pip install -q --python $VenvPy -r $Req
+} else {
+  Write-Host "Python environment in $Venv"
+  if (-not (Test-Path $VenvPy)) {
+    $exe = $Py[0]; $rest = @($Py | Select-Object -Skip 1)
+    & $exe @rest -m venv $Venv
+  }
+  Write-Host "Installing the voice's Python packages"
+  & $VenvPy -m pip install -q --upgrade pip
+  & $VenvPy -m pip install -q -r $Req
 }
-& $VenvPy -m pip install -q --upgrade pip
-& $VenvPy -m pip install -q -r (Join-Path $Repo 'server\requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 
 if ($Agents) { & $VenvPy $Helper install --agents $Agents } else { & $VenvPy $Helper install }

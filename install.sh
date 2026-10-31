@@ -36,22 +36,25 @@ if [[ -z "$PY" ]] && command -v python3 >/dev/null 2>&1 \
     && python3 -c 'import sys; sys.exit(not (3, 10) <= sys.version_info[:2] <= (3, 13))'; then
   PY="$(command -v python3)"
 fi
-if [[ -z "$PY" ]]; then
-  if [[ "$(uname)" == "Darwin" ]]; then
-    echo "Python 3.10 to 3.13 is needed: brew install python@3.12"
-  else
-    echo "Python 3.10 to 3.13 is needed, with venv: sudo apt install python3 python3-venv (or your distro's equivalent)"
-  fi
-  exit 1
+# No suitable Python: uv fetches a private Python 3.12 for the voice (nothing else on the system changes).
+UV="$(command -v uv || true)"
+[[ -z "$UV" && -x "$HOME/.local/bin/uv" ]] && UV="$HOME/.local/bin/uv"
+if [[ -z "$PY" && -z "$UV" ]]; then
+  echo "Python 3.10 to 3.13 not found: installing uv to fetch one (https://astral.sh/uv)"
+  curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh >/dev/null
+  UV="$HOME/.local/bin/uv"
 fi
 
 mkdir -p "$HOME_DIR"
-echo "Python environment in $HOME_DIR/.venv ($("$PY" -c 'import platform; print(platform.python_version(), platform.machine())'))"
-if command -v uv >/dev/null 2>&1; then
-  [[ -x "$VENV_PY" ]] || uv venv -q --python "$PY" "$HOME_DIR/.venv"
-  uv pip install -q --python "$VENV_PY" -r "$REPO/server/requirements.txt"
+if [[ -n "$UV" ]]; then
+  [[ -x "$VENV_PY" ]] || "$UV" venv -q --python "${PY:-3.12}" "$HOME_DIR/.venv"
+  echo "Python environment in $HOME_DIR/.venv ($("$VENV_PY" -c 'import platform; print(platform.python_version(), platform.machine())'))"
+  echo "Installing the voice's Python packages"
+  "$UV" pip install -q --python "$VENV_PY" -r "$REPO/server/requirements.txt"
 else
   [[ -x "$VENV_PY" ]] || "$PY" -m venv "$HOME_DIR/.venv"
+  echo "Python environment in $HOME_DIR/.venv ($("$VENV_PY" -c 'import platform; print(platform.python_version(), platform.machine())'))"
+  echo "Installing the voice's Python packages"
   "$VENV_PY" -m pip install -q --upgrade pip
   "$VENV_PY" -m pip install -q -r "$REPO/server/requirements.txt"
 fi

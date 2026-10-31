@@ -64,20 +64,20 @@ exports.run = async function () {
     await until('server idle', () => status().state === 'idle')
   })
   await step('clicking a sentence reads from it', async () => {
-    const r = api.latest()
+    const r = api.latest(5)
     await api.panelMessage({ type: 'play', id: r.id, session: r.session, index: 2 })
     await until('playing sentence 3', () => status().state === 'playing' && status().ref === r.id && status().index === 2, 20000)
     await until('status bar shows 3/', () => /Speaking 3\//.test(api.statusText()))
   })
   await step('the ▶ on a sentence reads only that one', async () => {
-    const r = api.latest()
+    const r = api.latest(5)
     const at = Math.min(4, r.sentences.length - 1) // the latest reply may be short
     await api.panelMessage({ type: 'playOne', id: r.id, session: r.session, index: at })
     await until(`playing sentence ${at + 1}`, () => status().index === at, 20000)
     await until('then idle (one sentence only)', () => status().state === 'idle', 30000)
   })
   await step('skip moves to the next sentence', async () => {
-    const r = api.latest()
+    const r = api.latest(5)
     await api.panelMessage({ type: 'play', id: r.id, session: r.session, index: 0 })
     await until('playing sentence 1', () => status().index === 0 && status().state === 'playing', 20000)
     await api.panelMessage({ type: 'skip' })

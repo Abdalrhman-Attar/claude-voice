@@ -8,4 +8,6 @@ Hear replies from Claude Code, Codex, Gemini CLI and Cursor read aloud with [Kok
 
 ## Setup
 
-The voice runs locally (Python and a 350 MB model). Run **Read Aloud: Set up the voice** from the command palette, or the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice). Replies are spoken by the Claude Code plugin and the agent hooks the installer adds; this extension shows and replays them.
+Open the **Read Aloud** panel and click **Set up**. It installs everything in one step, with progress shown: Python if you need it (a private copy, via uv), the voice and its 350 MB model, start at login, and the Claude Code plugin. Then **Test the voice**.
+
+Finished Claude Code replies are spoken right away, read from Claude Code's session files. The plugin adds speech while Claude types. Codex, Gemini CLI and Cursor can be connected with the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice).

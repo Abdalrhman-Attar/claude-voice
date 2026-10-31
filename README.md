@@ -20,7 +20,9 @@ Claude Code reads its replies aloud with [Kokoro](https://github.com/thewh1teagl
 
 ## Install
 
-Works on macOS (Apple Silicon and Intel), Linux (x86_64 and arm64) and Windows (x64 and ARM64). Needs Python 3.10 to 3.13 (3.12 or newer on Windows ARM) and about 350 MB for the voice model.
+Works on macOS (Apple Silicon and Intel), Linux (x86_64 and arm64) and Windows (x64 and ARM64), with about 400 MB for the voice. Python 3.10 to 3.13 is used if you have it; otherwise the installer fetches a private copy with [uv](https://astral.sh/uv).
+
+The quickest way in VS Code, Cursor or Windsurf: install **Read Aloud for Claude Code** from the extension marketplace, open its panel and click **Set up**. Everything below happens in one step, with progress shown.
 
 **macOS and Linux**
 
@@ -40,9 +42,11 @@ cd claude-voice
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-The installer creates `~/.claude/kokoro` (Python environment, model files, settings), starts the voice server at login (a LaunchAgent on macOS, a systemd user service on Linux, a Run entry on Windows), and binds **ctrl+x s** to Stop.
+The installer creates `~/.claude/kokoro` (Python environment, model files, settings), starts the voice server at login (a LaunchAgent on macOS, a systemd user service on Linux, a Run entry on Windows), binds **ctrl+x s** to Stop, and adds the Claude Code plugin when the `claude` command is found.
 
-Then, in Claude Code:
+The voice server also reads Claude Code's session files, so finished replies are spoken even without the plugin. The plugin adds speech while Claude types, the in-terminal Speak pane and per-sentence controls.
+
+If the plugin was not added automatically, in Claude Code:
 
 ```
 /plugin install speak-pane --marketplace Abdalrhman-Attar/claude-voice
@@ -69,7 +73,7 @@ cd vscode && npm install && npm run package
 code --install-extension read-aloud-for-claude-code-*.vsix          # add --profile <name> if you use a VS Code profile
 ```
 
-The extension shows and replays replies; speaking them as they arrive is done by the Claude Code plugin and the agent hooks. If the voice is not set up yet, run **Read Aloud: Set up the voice** from the command palette. `npm test` in `vscode/` runs its integration tests in a real VS Code.
+It works on its own: **Set up** in the panel installs the voice (fetching Python if needed) and the Claude Code plugin, and finished replies are spoken from Claude Code's session files even without the plugin. Sessions show Claude Code's own titles. `npm test` in `vscode/` runs its integration tests in a real VS Code.
 
 ## Other agents
 

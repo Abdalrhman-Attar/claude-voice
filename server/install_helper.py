@@ -9,7 +9,11 @@ CODE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.environ.get("KOKORO_HOME", os.path.expanduser("~/.claude/kokoro"))
 MODELS = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
 PYTHON = sys.executable
-SERVER = os.path.join(CODE, "server.py")
+# A git checkout runs its own server/ (edits apply at once); a copy elsewhere, such as inside the VS
+# Code extension's versioned folder, is copied to KOKORO_HOME/app so start-at-login survives updates.
+IN_REPO = os.path.isdir(os.path.join(CODE, "..", ".git"))
+APP = CODE if IN_REPO else os.path.join(HOME, "app")
+SERVER = os.path.join(APP, "server.py")
 LOG = os.path.join(HOME, "server.log")
 AGENT_ID = "com.claude.kokoro-voice"  # macOS LaunchAgent
 UNIT = "claude-kokoro-voice.service"  # Linux systemd user unit
@@ -37,6 +41,50 @@ def lexicon():
     path = os.path.join(HOME, "pronounce.json")
     if not os.path.exists(path):
         shutil.copy(os.path.join(CODE, "pronounce.default.json"), path)
+
+
+def copy_app():
+    if IN_REPO:
+        return
+    os.makedirs(APP, exist_ok=True)
+    for f in os.listdir(CODE):
+        if f.endswith((".py", ".json", ".txt")):
+            shutil.copy(os.path.join(CODE, f), os.path.join(APP, f))
+
+
+def claude_cli():
+    """The claude command, from PATH or a login shell's PATH (GUI apps often lack the user's PATH)."""
+    found = shutil.which("claude")
+    if found or sys.platform == "win32":
+        return found
+    shell = os.environ.get("SHELL", "/bin/zsh")
+    try:
+        out = subprocess.run([shell, "-lc", "command -v claude"], capture_output=True, text=True, timeout=15).stdout.strip()
+        return out.splitlines()[-1] if out else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def plugin():
+    """Installs the Claude Code plugin (speech while Claude types, the in-terminal panel)."""
+    cli = claude_cli()
+    if not cli:
+        print("Claude Code plugin: claude command not found. In Claude Code run:\n"
+              "  /plugin install speak-pane --marketplace Abdalrhman-Attar/claude-voice")
+        return False
+    run = lambda *a: subprocess.run([cli, "plugin", *a], capture_output=True, text=True, timeout=180)
+    listed = run("list")
+    if "speak-pane" in (listed.stdout or ""):
+        print("Claude Code plugin: already installed")
+        return True
+    run("marketplace", "add", "Abdalrhman-Attar/claude-voice")
+    done = run("install", "speak-pane@claude-voice")
+    if done.returncode == 0:
+        print("Claude Code plugin: installed (run /reload-plugins in open Claude Code sessions)")
+        return True
+    print("Claude Code plugin: could not install automatically:", (done.stderr or done.stdout).strip()[:300])
+    print("  In Claude Code run: /plugin install speak-pane --marketplace Abdalrhman-Attar/claude-voice")
+    return False
 
 
 def check_audio():
@@ -271,6 +319,8 @@ def agent_list(arg):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args == ["plugin"]:
+        sys.exit(0 if plugin() else 1)
     if args[:1] in (["connect"], ["disconnect"]) and len(args) == 2:
         connect(agent_list(args[1]), args[0] == "connect")
         sys.exit(0)
@@ -283,11 +333,13 @@ if __name__ == "__main__":
     download()
     lexicon()
     check_audio()
+    copy_app()
     autostart(True)
     shortcut()
+    if "--no-plugin" not in args:
+        plugin()
     if "--agents" in args and args.index("--agents") + 1 < len(args):
         connect(agent_list(args[args.index("--agents") + 1]))
     print("""
-Voice installed. In Claude Code, add the plugin if you have not:
-  /plugin install speak-pane --marketplace Abdalrhman-Attar/claude-voice
-then run /reload-plugins. Open the panel with /speak.""")
+Voice installed. Replies from Claude Code are read aloud from now on.
+Open Claude Code sessions: run /reload-plugins. Open the panel with /speak.""")

@@ -1,5 +1,6 @@
 /* Every color is a VS Code theme variable, so the panel follows light, dark and high-contrast themes. */
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -241,7 +242,47 @@ footer {
   line-height: 1.5;
 }
 .setup[hidden] { display: none; }
-.setup .codicon { font-size: 32px; opacity: 0.7; }
+.setup .hero { font-size: 32px; opacity: 0.7; }
+.steps { list-style: none; margin: 4px 0 0; padding: 0; text-align: left; display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 300px; }
+.steps li { display: flex; align-items: baseline; gap: 8px; color: var(--vscode-descriptionForeground); }
+.steps li::before { font: normal normal normal 16px/1 codicon; content: '\eabc'; position: relative; top: 3px; }
+.steps li.doing { color: var(--vscode-foreground); }
+.steps li.doing::before { content: '\eb19'; animation: spin 1.2s linear infinite; }
+.steps li.done { color: var(--vscode-foreground); }
+.steps li.done::before { content: '\eba4'; color: var(--vscode-charts-green, var(--vscode-testing-iconPassed)); }
+.steps li.failed::before { content: '\ebfb'; color: var(--vscode-errorForeground); }
+.steps small { font-size: 11px; color: var(--vscode-descriptionForeground); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.detail { min-height: 16px; max-width: 300px; font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail.error { color: var(--vscode-errorForeground); white-space: normal; }
+.setup-actions { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.setup details { width: 100%; max-width: 320px; text-align: left; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.setup pre { max-height: 160px; overflow: auto; white-space: pre-wrap; font-family: var(--vscode-editor-font-family); font-size: 11px; background: var(--vscode-textCodeBlock-background); padding: 6px; border-radius: 3px; }
+.link { border: 0; background: none; padding: 0; color: var(--vscode-textLink-foreground); cursor: pointer; font-size: 12px; }
+.link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.button.small { padding: 2px 10px; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+.button:disabled { opacity: 0.5; cursor: default; }
+.spacer { width: 48px; flex: none; }
+.hint {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 8px 2px;
+  padding: 6px 4px 6px 8px;
+  font-size: 12px;
+  line-height: 17px;
+  border-radius: 3px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-inputValidation-infoBackground, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
+}
+.hint[hidden] { display: none; }
+.hint > .codicon { margin-top: 1px; color: var(--vscode-editorInfo-foreground, var(--vscode-focusBorder)); }
+.hint span { flex: 1; }
+.hint .link { white-space: nowrap; }
 .setup h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .setup p { margin: 0 0 8px; color: var(--vscode-descriptionForeground); }
 .button {

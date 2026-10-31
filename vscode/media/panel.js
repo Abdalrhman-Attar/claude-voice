@@ -12,9 +12,11 @@
   let selected = saved.selected || null // { id, session }; null follows the session's latest reply
   let pickedSession = saved.session || null // a session id; null follows whichever spoke last
   let open = saved.open || { voice: false, speak: false, sessions: false } // settings groups shown
+  let hintDismissed = saved.hintDismissed === true
+  let setupClosed = false // a finished setup's card stays until Continue
   let lastLive = null
 
-  const save = () => vscode.setState({ selected, open, session: pickedSession })
+  const save = () => vscode.setState({ selected, open, session: pickedSession, hintDismissed })
   const key = r => `${r.session}\u0000${r.id}`
   const icon = name => {
     const i = document.createElement('i')
@@ -65,6 +67,7 @@
   }
   const agentName = r => ({ claude: 'Claude', codex: 'Codex', gemini: 'Gemini', cursor: 'Cursor' })[r.agent] || r.agent || 'Claude'
   const project = r => (r.label || '').replace(/^(Codex|Gemini|Cursor|Mcp|MCP) in /, '')
+  const sessionName = r => r.title || project(r) || agentName(r)
 
   function when(t) {
     const d = new Date(t * 1000)
@@ -82,22 +85,23 @@
     const follow = document.createElement('option')
     follow.value = ''
     const latest = all[0]
-    follow.textContent = `Follow latest${latest ? ` (${project(latest.reply) || agentName(latest.reply)}, ${when(latest.first)})` : ''}`
+    follow.textContent = `Follow latest${latest ? ` (${sessionName(latest.reply)})` : ''}`
     select.appendChild(follow)
     const groups = new Map()
     for (const s of all) {
-      const name = AGENTS[s.agent] || s.agent
-      if (!groups.has(name)) {
+      const group = AGENTS[s.agent] || s.agent
+      if (!groups.has(group)) {
         const g = document.createElement('optgroup')
-        g.label = name
-        groups.set(name, g)
+        g.label = group
+        groups.set(group, g)
         select.appendChild(g)
       }
       const o = document.createElement('option')
       o.value = s.session
       const speaking = state.status.session === s.session && (state.status.state === 'playing' || state.status.state === 'paused')
-      o.textContent = `${speaking ? '♪ ' : ''}${project(s.reply) || agentName(s.reply)} · started ${when(s.first)} · ${s.count} ${s.count === 1 ? 'reply' : 'replies'}`
-      groups.get(name).appendChild(o)
+      const name = s.reply.title ? `${s.reply.title} (${project(s.reply)})` : `${project(s.reply) || agentName(s.reply)} · started ${when(s.first)}`
+      o.textContent = `${speaking ? '♪ ' : ''}${name} · ${s.count} ${s.count === 1 ? 'reply' : 'replies'}`
+      groups.get(group).appendChild(o)
     }
     select.value = pickedSession && all.some(s => s.session === pickedSession) ? pickedSession : ''
   }
@@ -146,7 +150,7 @@
     badge.textContent = agentName(reply)
     const info = document.createElement('span')
     const where = project(reply)
-    info.textContent = `${where ? `${where} · ` : ''}${ago(reply.t)} · ${reply.sentences.length} sentences · reply ${sessionReplies().indexOf(reply) + 1} of ${sessionReplies().length}`
+    info.textContent = `${reply.title ? `${reply.title} · ` : ''}${where ? `${where} · ` : ''}${ago(reply.t)} · ${reply.sentences.length} sentences · reply ${sessionReplies().indexOf(reply) + 1} of ${sessionReplies().length}`
     meta.append(badge, info)
     list.appendChild(meta)
 
@@ -262,8 +266,41 @@
     }
   }
 
+  const STEP_COUNT = 5
+  function renderSetup() {
+    const s = state.setup || {}
+    const finished = s.ok === true
+    const stepsDone = finished ? STEP_COUNT + 1 : s.step || 0
+    for (const li of document.querySelectorAll('#steps li')) {
+      const n = Number(li.dataset.step)
+      li.className = n < stepsDone || finished ? 'done' : n === stepsDone && s.running ? 'doing' : n === stepsDone && s.ok === false ? 'failed' : ''
+    }
+    const detail = $('setupDetail')
+    detail.classList.toggle('error', s.ok === false)
+    detail.textContent = s.ok === false ? `${s.error || 'Setup stopped.'} See the log below.` : finished ? 'All set.' : s.running ? s.detail || '' : ''
+    $('runSetup').hidden = finished
+    $('runSetup').disabled = !!s.running
+    $('runSetup').textContent = s.running ? 'Setting up…' : s.ok === false ? 'Try again' : 'Set up'
+    $('testVoice').hidden = !finished
+    $('continue').hidden = !finished
+    $('terminalSetup').hidden = !!s.running || finished
+    $('log').textContent = (s.log || []).join('\n')
+    $('logBox').hidden = !(s.log && s.log.length)
+  }
+
   function render(scroll) {
     const reply = current()
+    const s = state.setup || {}
+    const setupShown = !state.ready || s.running || (s.ok !== undefined && !setupClosed)
+    $('setup').hidden = !setupShown
+    renderSetup()
+    $('pluginHint').hidden = setupShown || state.plugin || hintDismissed
+    if (setupShown) {
+      $('list').hidden = true
+      document.querySelector('footer').hidden = true
+      document.querySelector('header').hidden = true
+      return
+    }
     $('setup').hidden = state.ready
     $('list').hidden = !state.ready
     document.querySelector('footer').hidden = !state.ready
@@ -310,6 +347,18 @@
   $('playAll').addEventListener('click', () => play('play', 0))
   for (const id of ['pause', 'skip', 'stop']) $(id).addEventListener('click', () => vscode.postMessage({ type: id }))
   $('runSetup').addEventListener('click', () => vscode.postMessage({ type: 'setup' }))
+  $('terminalSetup').addEventListener('click', () => vscode.postMessage({ type: 'terminalSetup' }))
+  for (const id of ['testVoice', 'testVoice2']) $(id).addEventListener('click', () => vscode.postMessage({ type: 'test' }))
+  $('installPlugin').addEventListener('click', () => vscode.postMessage({ type: 'installPlugin' }))
+  $('dismissHint').addEventListener('click', () => {
+    hintDismissed = true
+    save()
+    render(false)
+  })
+  $('continue').addEventListener('click', () => {
+    setupClosed = true
+    render(true)
+  })
   for (const group of document.querySelectorAll('.group')) {
     group.querySelector('.group-head').addEventListener('click', () => {
       open = { ...open, [group.dataset.group]: !open[group.dataset.group] }
