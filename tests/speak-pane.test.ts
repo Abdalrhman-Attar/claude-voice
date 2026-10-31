@@ -25,35 +25,12 @@ const PANE = {
   view: {},
 } as const
 
-const LINK = 'https://speak.local'
-type Ui = { press: (t: { key: string; link?: { href: string } }) => Promise<unknown> }
-const SETTING_LINKS = ['voice', 'faster', 'slower', 'mute', 'away']
+type Ui = { press: (t: { key: string }) => Promise<unknown> }
 
-// Presses a control by its terminal key. On remote surfaces (desktop, VS Code) sentences,
-// reply navigation and settings are text links in a Markdown block instead of Buttons.
-function tap(ui: Ui, surface: string, key: string, reply = 0) {
-  if (surface === 'terminal') {
-    return ui.press({ key })
-  }
-  const sentence = /^([spf])(\d+)$/.exec(key)
-  if (sentence) {
-    return ui.press({ key: `row${sentence[2]}`, link: { href: `${LINK}/${sentence[1] === 'f' ? 'from' : 'play'}/${sentence[2]}` } })
-  }
-  if (SETTING_LINKS.includes(key)) {
-    return ui.press({ key: 'settings', link: { href: `${LINK}/${key}` } })
-  }
-  if (key === 'prev' || key === 'next') {
-    return ui.press({ key: 'nav', link: { href: `${LINK}/reply/${reply}` } })
-  }
-  return ui.press({ key })
-}
-
-type Finder = { find: (q: { key?: string; type?: string; text?: RegExp }) => Promise<{ text?: unknown } | undefined> }
-
-// "Reply 2 of 2": a Text on the terminal, part of the navigation links elsewhere.
-async function replyLabel(ui: Finder, surface: string) {
-  const found = surface === 'terminal' ? await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }) : await ui.find({ key: 'nav' })
-  return /Reply \d+ of \d+/.exec(String(found?.text ?? ''))?.[0]
+// Presses a control by its terminal key. Remote surfaces (desktop, VS Code) draw the sentence
+// as plain text, so its play goes through the ▶ button beside it.
+function tap(ui: Ui, surface: string, key: string, _reply = 0) {
+  return ui.press({ key: surface !== 'terminal' && /^s\d+$/.test(key) ? `p${key.slice(1)}` : key })
 }
 
 const NOW = new Date(2026, 9, 31, 14, 0).getTime()
@@ -320,9 +297,9 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'New reply.', 't2')
     const ui = await mount($)
 
-    expect(await replyLabel(ui, surface)).toBe('Reply 2 of 2')
+    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
     await tap(ui, surface, 'prev', 0)
-    expect(await replyLabel(ui, surface)).toBe('Reply 1 of 2')
+    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 1 of 2')
     await tap(ui, surface, 's0')
     expect(host.sent.map(r => r.sentences)).toEqual([['Old reply.']])
   })
@@ -332,7 +309,7 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await mount($)
 
     await tap(ui, surface, 'rebuild')
-    expect(await replyLabel(ui, surface)).toBe('Reply 2 of 2')
+    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
     await tap(ui, surface, 's1')
     expect(host.sent.map(r => r.sentences)).toEqual([['More.']])
   })
@@ -430,12 +407,10 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
       }
       return
     }
-    expect(await ui.find({ key: 'row0' })).toBeDefined()
-    expect(await ui.find({ key: 'row39' })).toBeUndefined()
-    const down = /\((https:\/\/speak\.local\/down\/\d+)\)/.exec(String((await ui.find({ key: 'scroll' }))?.text ?? ''))?.[1] ?? ''
-    await ui.press({ key: 'scroll', link: { href: down } })
-    expect(await ui.find({ key: 'row0' })).toBeUndefined()
-    for (const key of ['all', 'pause', 'skip', 'stop', 'nav', 'settings', 'scroll']) {
+    // Every sentence is drawn; the surface scrolls the pane.
+    expect(await ui.find({ key: 'p0' })).toBeDefined()
+    expect(await ui.find({ key: 'p39' })).toBeDefined()
+    for (const key of ['all', 'pause', 'skip', 'stop', 'voice', 'mute', 'prev']) {
       expect(await ui.find({ key })).toBeDefined()
     }
   })
