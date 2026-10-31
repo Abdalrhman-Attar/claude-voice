@@ -2,7 +2,7 @@
 # Second half of install.sh / install.ps1, run with the voice's own Python environment:
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
 #   install_helper.py install [--agents codex,gemini,cursor,mcp] [--arabic] | uninstall
-#   install_helper.py arabic         adds the Arabic voice (about 250 MB)
+#   install_helper.py arabic         adds the Arabic voice (about 170 MB)
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
 import json, os, shutil, ssl, subprocess, sys, urllib.request
 
@@ -53,30 +53,26 @@ def download():
 
 
 def arabic():
-    """The Arabic voice (Nabra-82M) and its diacritizer (CATT), about 250 MB."""
-    import zipfile
-
+    """The Arabic voice (Nabra-82M) and its diacritizer (Shakkelha), about 170 MB."""
     sys.path.insert(0, CODE)
     import arabic as voice
 
     os.makedirs(voice.DIR, exist_ok=True)
     for name, url in voice.FILES.items():
         path = os.path.join(voice.DIR, name)
-        if name == "catt.zip":
-            best = voice.DIACRITIZERS[0]
-            if all(os.path.exists(os.path.join(voice.DIR, f)) for f in best):
-                continue
-            fetch(url, path, "the Arabic diacritizer")
-            with zipfile.ZipFile(path) as z:
-                for member, to in zip(("encoder.onnx", "decoder.onnx"), best):
-                    with z.open(member) as src, open(os.path.join(voice.DIR, to), "wb") as dst:
-                        shutil.copyfileobj(src, dst)
-            os.remove(path)
-            for old in voice.DIACRITIZERS[1]:  # the encoder-only model it replaces
-                if os.path.exists(os.path.join(voice.DIR, old)):
-                    os.remove(os.path.join(voice.DIR, old))
-        elif not os.path.exists(path):
-            fetch(url, path, "the Arabic voice" if name.endswith(".onnx") else name)
+        if os.path.exists(path):
+            continue
+        fetch(url, path, {"nabra.onnx": "the Arabic voice", "shakkelha.npz": "the Arabic diacritizer"}.get(name, name))
+        if name == "shakkelha.npz":
+            import hashlib
+
+            with open(path, "rb") as f:
+                if hashlib.sha256(f.read()).hexdigest() != voice.SHAKKELHA_SHA256:
+                    os.remove(path)
+                    sys.exit("The Arabic diacritizer download did not match its checksum; try again.")
+    for old in (f for pair in voice.DIACRITIZERS for f in pair):  # CATT, which Shakkelha replaces
+        if os.path.exists(os.path.join(voice.DIR, old)):
+            os.remove(os.path.join(voice.DIR, old))
     print("Arabic voice installed. It is used from the next Arabic sentence.")
 
 

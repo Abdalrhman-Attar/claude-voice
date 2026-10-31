@@ -12,4 +12,4 @@ Open the **Read Aloud** panel and click **Set up**. It installs everything in on
 
 Finished Claude Code replies are spoken right away, read from Claude Code's session files. The plugin adds speech while Claude types. Codex, Gemini CLI and Cursor can be connected with the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice).
 
-**Arabic:** run **Read Aloud: Add the Arabic voice** from the Command Palette to read Arabic in Nabra, a neural Arabic voice (about 250 MB). Without it, Arabic uses your system's Arabic voice (Majed on macOS).
+**Arabic:** run **Read Aloud: Add the Arabic voice** from the Command Palette to read Arabic in Nabra, a neural Arabic voice (about 170 MB). Without it, Arabic uses your system's Arabic voice (Majed on macOS).

@@ -19,10 +19,33 @@ assert "،؛؟".translate(arabic.PUNCTUATION) == ",;?"
 assert [s for s, _, _ in markdown.to_sentences("مرحبا بك. هل تريد المتابعة؟ نعم")] == [
     "مرحبا بك.", "هل تريد المتابعة؟", "نعم"]
 # Read aloud: case endings become a sukun, connecting alifs go silent after a vowel, particles stay.
-read = arabic.reading
-assert read("بِاللُّغَةِ الْعَرَبِيَّةِ.") == "بِٱللُّغَهْ الْعَرَبِيَّهْ.", read("بِاللُّغَةِ الْعَرَبِيَّةِ.")
-assert read("فِي الْخَادِمِ") == "فِي ٱلْخَادِمْ"
+import re  # noqa: E402
+
+def read(text):
+    return arabic.reading(text)
+
+
+def shadda_first(text):  # how reading() orders a shadda and its vowel
+    return re.sub("([\u064B-\u0650])\u0651", "\u0651\\1", text)
+
+
+assert read("بِاللُّغَةِ الْعَرَبِيَّةِ.") == shadda_first("بِٱللُّغَهْ الْعَرَبِيَّهْ.")
+assert read("فِي الْخَادِمِ") == shadda_first("فِي ٱلْخَادِمْ")
 assert read("صَوْتُكَ الْجَدِيدُ") == "صَوْتُكْ الْجَدِيدْ"  # after a consonant the article is said
-assert read("ثُمَّ أَعِدْ") == "ثُمَّ أَعِدْ"
-assert read("إلَى") == "إِلَى"
+assert read("ثُمَّ أَعِدْ") == shadda_first("ثُمَّ أَعِدْ")
+assert read("إلَى") == shadda_first("إِلَى")
+assert read("\u062b\u064f\u0645\u064e\u0651") == "\u062b\u064f\u0645\u0651\u064e"  # Shakkelha's vowel-then-shadda is turned around for espeak
+assert read("الاِخْتِبَارَاتِ") == shadda_first("الِٱخْتِبَارَاتْ")
+assert read("مَعَ الأَصْدِقَاءِ") == shadda_first("مَعْ الْأَصْدِقَاءْ")
+
+# Shakkelha itself, when its weights are installed here (run with the voice's Python for NumPy).
+import importlib.util  # noqa: E402
+
+if os.path.exists(os.path.join(arabic.DIR, "shakkelha.npz")) and importlib.util.find_spec("numpy"):
+    from shakkelha import Shakkelha
+
+    shakkelha = Shakkelha(os.path.join(arabic.DIR, "shakkelha.npz"))
+    said = shakkelha("أصلحت مشكلتين في الخادم، وجميع الاختبارات تعمل الآن.")
+    assert said.startswith("أَصْلَحْتُ مُشْكِلَتَيْنِ فِي الْخَادِمِ"), said
+    assert shakkelha("Save الملف") .startswith("Save ")  # other letters pass through
 print("arabic: all checks pass")

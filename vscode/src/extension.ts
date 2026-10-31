@@ -373,7 +373,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   view.onSetup = runSetup
   const addArabic = () =>
     vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Adding the Arabic voice (about 250 MB)' },
+      { location: vscode.ProgressLocation.Notification, title: 'Adding the Arabic voice (about 170 MB)' },
       progress =>
         new Promise<void>(resolve => {
           const helper = path.join(serverDir(server), 'install_helper.py')

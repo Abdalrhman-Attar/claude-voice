@@ -3,7 +3,7 @@
 # Windows: install.ps1). Apple Silicon and Intel Macs, x86_64 and arm64 Linux.
 #   ./install.sh            Python environment, models, start at login, ctrl+x s shortcut
 #   ./install.sh --agents codex,gemini,cursor,mcp   also read other agents' replies aloud
-#   ./install.sh --arabic   also the Arabic voice (about 250 MB)
+#   ./install.sh --arabic   also the Arabic voice (about 170 MB)
 #   ./install.sh --uninstall
 set -euo pipefail
 

@@ -1,6 +1,7 @@
 # Arabic in a neural voice: Nabra-82M (a Kokoro fine-tune for Modern Standard Arabic, by oddadmix,
-# Apache 2.0), after CATT (Abjad AI, Apache 2.0) restores the short vowels that written Arabic
-# leaves out. Both are ONNX models that `install_helper.py arabic` downloads to KOKORO_HOME/arabic.
+# Apache 2.0), after Shakkelha (MIT; shakkelha.py) restores the short vowels that written Arabic
+# leaves out. `install_helper.py arabic` downloads both to KOKORO_HOME/arabic. Installs made
+# before Shakkelha keep using CATT (Abjad AI, Apache 2.0; server/catt).
 import os, re, threading
 
 HOME = os.environ.get("KOKORO_HOME", os.path.expanduser("~/.claude/kokoro"))
@@ -9,10 +10,12 @@ FILES = {  # file here -> where it comes from
     "nabra.onnx": "https://huggingface.co/marwanelamami/nabra-82m-sherpa-onnx/resolve/7fe12ea85baeb7a38c58d7c5370c87c95b16adb9/model.fp16.onnx",
     "voices.bin": "https://huggingface.co/marwanelamami/nabra-82m-sherpa-onnx/resolve/7fe12ea85baeb7a38c58d7c5370c87c95b16adb9/voices.bin",
     "tokens.txt": "https://huggingface.co/marwanelamami/nabra-82m-sherpa-onnx/resolve/7fe12ea85baeb7a38c58d7c5370c87c95b16adb9/tokens.txt",
-    # CATT's encoder-decoder model, the more accurate of its two: ed-encoder.onnx, ed-decoder.onnx
-    "catt.zip": "https://github.com/abjadai/catt/releases/download/v2/ed_model_onnx.zip",
+    # Shakkelha's weights, read out of its Keras model (see shakkelha.py)
+    "shakkelha.npz": "https://github.com/Abdalrhman-Attar/claude-voice/releases/download/models-shakkelha-1/shakkelha-rnn3-big-avg20.npz",
 }
-DIACRITIZERS = (("ed-encoder.onnx", "ed-decoder.onnx"), ("encoder.onnx", "decoder.onnx"))  # best first
+SHAKKELHA_SHA256 = "e970e7d663483c1599ea9ff3218c82ace8fd80e68530feff89dcceefc9b93b8f"
+# Older installs: CATT's encoder-decoder or encoder-only models, used when Shakkelha is missing.
+DIACRITIZERS = (("ed-encoder.onnx", "ed-decoder.onnx"), ("encoder.onnx", "decoder.onnx"))
 OWN_VOICE = "af_msa"  # Nabra's own voice; any Kokoro voice name also works, as Nabra is a Kokoro fine-tune
 RATE = 24000
 MAX_TOKENS = 508  # the voice pack has a style row for up to 510, with the two ends
@@ -41,6 +44,10 @@ _lock = threading.Lock()
 _model = None
 
 
+def has_shakkelha():
+    return os.path.exists(os.path.join(DIR, "shakkelha.npz"))
+
+
 def diacritizer():
     """(encoder, decoder, autoregressive) paths of the best CATT model here, or None."""
     for k, pair in enumerate(DIACRITIZERS):
@@ -51,7 +58,7 @@ def diacritizer():
 
 
 def installed():
-    return diacritizer() is not None and all(os.path.exists(os.path.join(DIR, f)) for f in ("nabra.onnx", "voices.bin", "tokens.txt"))
+    return (has_shakkelha() or diacritizer() is not None) and all(os.path.exists(os.path.join(DIR, f)) for f in ("nabra.onnx", "voices.bin", "tokens.txt"))
 
 
 class Model:
@@ -62,9 +69,15 @@ class Model:
 
         self.np = np
         self.tts = ort.InferenceSession(os.path.join(DIR, "nabra.onnx"), providers=["CPUExecutionProvider"])
-        encoder, decoder, self.autoregressive = diacritizer()
-        self.encoder = ort.InferenceSession(encoder, providers=["CPUExecutionProvider"])
-        self.decoder = ort.InferenceSession(decoder, providers=["CPUExecutionProvider"])
+        self.shakkelha = None
+        if has_shakkelha():
+            from shakkelha import Shakkelha
+
+            self.shakkelha = Shakkelha(os.path.join(DIR, "shakkelha.npz"))
+        else:
+            encoder, decoder, self.autoregressive = diacritizer()
+            self.encoder = ort.InferenceSession(encoder, providers=["CPUExecutionProvider"])
+            self.decoder = ort.InferenceSession(decoder, providers=["CPUExecutionProvider"])
         self.voices = {OWN_VOICE: np.fromfile(os.path.join(DIR, "voices.bin"), dtype=np.float32).reshape(-1, 256)}
         kokoro_voices = os.path.join(HOME, "voices-v1.0.bin")
         if os.path.exists(kokoro_voices):
@@ -126,7 +139,10 @@ class Model:
 
     def say(self, text, speed, voice):
         np = self.np
-        vowelled = reading(WORDS.sub(lambda m: self.vowels(m.group(0)), text))
+        if self.shakkelha:  # the whole sentence, punctuation and all, for context
+            vowelled = reading(self.shakkelha(text))
+        else:
+            vowelled = reading(WORDS.sub(lambda m: self.vowels(m.group(0)), text))
         ids = [self.vocab[c] for c in self.phonemes(vowelled) if c in self.vocab][:MAX_TOKENS]
         if not ids:
             return None
@@ -142,7 +158,12 @@ def strip_marks(word):
 
 def reading(vowelled):
     """Vowelled text as it is read aloud: connecting alifs silent, words without case endings."""
-    text = WASL_AFTER_WORD.sub("\u0671", WASL_AFTER_VOWEL.sub("\u0671", vowelled))
+    text = re.sub("([\u064B-\u0650])\u0651", "\u0651\\1", vowelled)  # espeak reads a shadda only before the vowel
+    # Shakkelha writes the connecting alif inside a word with its kasra ("الاِخْتِبَار"): the kasra
+    # belongs to the letter before ("al-ikhtibār"), and the alif is silent.
+    text = re.sub(f"(?<=[{LETTER}])\u0627\u0650", "\u0650\u0671", text)
+    text = re.sub(f"(?<![{LETTER}{MARKS}])([\u0627\u0671]\u0644)(?=[\u0621-\u0625])", "\\1\u0652", text)  # "al-ʔaṣdiqāʔ"
+    text = WASL_AFTER_WORD.sub("\u0671", WASL_AFTER_VOWEL.sub("\u0671", text))
     text = BARE_HAMZA_BELOW.sub("\u0625\u0650", text)
     # A sukun, else espeak adds a vowel of its own ("ṣawtuka"); particles keep their fixed vowel.
     text = re.sub(f"[{LETTER}{MARKS}\u0671]+", lambda m: m.group(0) if strip_marks(m.group(0)) in FIXED_ENDINGS
