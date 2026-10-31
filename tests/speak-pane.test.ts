@@ -195,12 +195,14 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await mount($)
 
     await ui.press({ key: 's1' })
+    await ui.press({ key: 'p1' })
     await ui.press({ key: 'f0' })
     await ui.press({ key: 'all' })
     await ui.press({ key: 'pause' })
     await ui.press({ key: 'skip' })
     await ui.press({ key: 'stop' })
     expect(host.sent.map(({ session, label, ...r }) => r)).toEqual([
+      { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
       { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
       { mode: 'play', sentences: ['First one.', 'Second one!'], pauses: [0, 0], ref: 't1', offset: 0 },
       { mode: 'play', sentences: ['First one.', 'Second one!'], pauses: [0, 0], ref: 't1', offset: 0 },
