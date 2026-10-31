@@ -26,6 +26,7 @@ const MAX_REPLIES = 100
 const SUMMARY_OVER = 1200 // chars of plain text; longer replies are summarized when summaries are on
 const POLL_MS = 400
 const LONG_TURN_MS = 30000 // a turn this long ends with "All done." when the person is away
+const REMOTE_ROWS = 3 // VS Code and the desktop app fit about this many rows per terminal row
 const VOICES = ['af_heart', 'af_bella', 'af_nicole', 'af_sky', 'am_michael', 'am_adam', 'bf_emma', 'bm_george']
 
 const replies = atom({ plugin: 'speak-pane', key: 'replies' } as const, [])
@@ -512,19 +513,26 @@ export const register: Register = on => {
 
     if (remote) {
       // Native buttons here: small ▶ (this sentence) and » (from here) beside plain text, so
-      // the sentences read cleanly. Every sentence is drawn; the surface scrolls the pane.
-      const rows = sentences.map((s, i) => (
-        <Box key={`line${i}`} flexDirection="row" columnGap={1} marginTop={i > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
+      // the sentences read cleanly. The row estimate is in terminal rows, and these surfaces fit
+      // far more, so several times as many are drawn and the list's box clips what does not fit.
+      const remotePage = Math.max(1, shown * 2 - 2) // about a screenful there, never past what was seen
+      const drawn = sentences.slice(start, start + shown * REMOTE_ROWS + 4)
+      const rows = drawn.map((s, k) => {
+        const i = start + k
+        return (
+        <Box key={`line${i}`} flexDirection="row" columnGap={1} marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
           <Box flexDirection="row" columnGap={1} flexShrink={0}>
             <Button key={`p${i}`} onPress={play(i)}>{live === i ? '♪' : '▶'}</Button>
             <Button key={`f${i}`} onPress={playFrom(i)}>»</Button>
           </Box>
           <Text color={live === i ? 'green' : undefined} bold={live === i}>{s.text}</Text>
         </Box>
-      ))
+        )
+      })
 
       return (
-        <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="column" paddingX={1} height={height}>
+          <Box flexDirection="column" flexShrink={0}>
           <Box flexDirection="row" justifyContent="space-between" alignItems="center">
             <Box flexDirection="row" columnGap={1} alignItems="center">
               <Button key="prev" onPress={show(Math.max(0, at - 1))}>◀</Button>
@@ -541,10 +549,18 @@ export const register: Register = on => {
             <Button key="stop" onPress={stop}>■ Stop</Button>
             {historyButton}
           </Box>
-          <Box flexDirection="column" rowGap={0} marginY={1}>
+          </Box>
+          <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden" marginY={1}>
             {rows}
           </Box>
-          {controls}
+          <Box flexDirection="column" flexShrink={0} rowGap={1}>
+            <Box flexDirection="row" columnGap={1} alignItems="center">
+              <Button key="up" onPress={scrollTo(start - remotePage)}>▲</Button>
+              <Button key="down" onPress={scrollTo(start + remotePage)}>▼</Button>
+              <Text dimColor>from {start + 1} of {sentences.length}</Text>
+            </Box>
+            {controls}
+          </Box>
         </Box>
       )
     }

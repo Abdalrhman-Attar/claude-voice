@@ -407,10 +407,12 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
       }
       return
     }
-    // Every sentence is drawn; the surface scrolls the pane.
+    // More rows than the terminal estimate are drawn (the list clips them), not all forty.
     expect(await ui.find({ key: 'p0' })).toBeDefined()
-    expect(await ui.find({ key: 'p39' })).toBeDefined()
-    for (const key of ['all', 'pause', 'skip', 'stop', 'voice', 'mute', 'prev']) {
+    expect(await ui.find({ key: 'p39' })).toBeUndefined()
+    await ui.press({ key: 'down' })
+    expect(await ui.find({ key: 'p0' })).toBeUndefined()
+    for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'voice', 'mute', 'prev']) {
       expect(await ui.find({ key })).toBeDefined()
     }
   })
