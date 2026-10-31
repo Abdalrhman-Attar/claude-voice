@@ -6,7 +6,7 @@
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
-import arabic as arabic_voice, magpie, system_voice, transport
+import arabic as arabic_voice, magpie, mic, system_voice, transport
 from transcripts import Watcher
 from collections import OrderedDict
 
@@ -817,11 +817,46 @@ def transcript_reply(session, cwd, reply_id, text):
             "sentences": [t for t, _, _ in spoken], "pauses": pauses_for(spoken)})
 
 
+MIC_POLL = 0.25  # seconds between looks at the microphone
+MIC_RESUME = 1.5  # quiet seconds after dictation before a paused reply goes on (sending stops it)
+mic_busy = threading.Event()  # someone is dictating: nothing new starts
+
+
+def mic_watch():
+    """Pauses the reply being read while you dictate ("pauseForMic": "dictation", the default; "any"
+    for every program that records, calls included; "off"), and holds replies that arrive meanwhile."""
+    paused = None  # the job this paused
+    quiet_since = None
+    while True:
+        time.sleep(MIC_POLL)
+        which = str(settings().get("pauseForMic", "dictation"))
+        talking = which != "off" and mic.active(which)
+        with cond:
+            job = current if current is not None and not current.done.is_set() else None
+            if talking:
+                quiet_since = None
+                if not mic_busy.is_set():
+                    mic_busy.set()
+                    if job is not None and job.running.is_set():
+                        job.toggle_pause()
+                        paused = job
+                        log("paused while you dictate")
+            elif mic_busy.is_set():
+                quiet_since = quiet_since or time.time()
+                if time.time() - quiet_since >= MIC_RESUME:
+                    mic_busy.clear()
+                    quiet_since = None
+                    if paused is not None and paused is job and not job.running.is_set():
+                        job.toggle_pause()
+                    paused = None
+                    cond.notify_all()
+
+
 def worker():
     global current
     while True:
         with cond:
-            while not pending or (current is not None and not current.done.is_set()):
+            while not pending or (current is not None and not current.done.is_set()) or mic_busy.is_set():
                 cond.wait(timeout=1)
             req = pending.pop(0)
             first = (req.get("sentences") or [req.get("text", "")])[0]
@@ -857,6 +892,7 @@ if __name__ == "__main__":
         model_lock = threading.Lock()
         threading.Thread(target=worker, daemon=True).start()
         threading.Thread(target=keep_warm, daemon=True).start()
+        threading.Thread(target=mic_watch, daemon=True).start()
         Watcher(on_transcript_reply, on_title).start()
         last_active = time.time()
         while True:

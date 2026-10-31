@@ -277,6 +277,7 @@
     $('live').checked = c.live !== false
     $('workUpdates').checked = c.workUpdates !== false
     $('summarize').checked = c.summarize !== false
+    $('pauseForMic').checked = c.pauseForMic !== 'off'
     $('allSessions').checked = state.allSessions === true
     $('projectVoices').checked = c.projectVoices === true
 
@@ -401,6 +402,10 @@
   $('speed').addEventListener('input', e => ($('speedOut').textContent = `${Number(e.target.value).toFixed(1)}×`))
   $('speed').addEventListener('change', e => setting('speed', Math.round(Number(e.target.value) * 10) / 10))
   $('autoSpeak').addEventListener('change', e => setting('muted', !e.target.checked))
+  // "any" (every program that records, calls included) is kept when switching on from the file.
+  $('pauseForMic').addEventListener('change', e =>
+    setting('pauseForMic', e.target.checked ? (state.settings.pauseForMic === 'any' ? 'any' : 'dictation') : 'off'),
+  )
   for (const id of ['awayOnly', 'live', 'workUpdates', 'projectVoices', 'summarize']) {
     $(id).addEventListener('change', e => setting(id, e.target.checked))
   }

@@ -439,13 +439,25 @@ export const register: Register = on => {
       if (!Array.isArray(answers)) {
         return
       }
+      // A reply already listed keeps its id, so the one being read stays highlighted and in view.
+      const before = await read($, replies)
+      const known = new Map(before.map(r => [r.sentences.map(s => s.text).join('\n'), r.id]))
       const rebuilt = answers
         .filter((a): a is string => typeof a === 'string')
-        .map((a, i) => ({ id: `history-${i}`, sentences: toSentences(a) }))
+        .map((a, i) => {
+          const sentences = toSentences(a)
+          return { id: known.get(sentences.map(s => s.text).join('\n')) ?? `history-${i}`, sentences }
+        })
         .filter(r => r.sentences.length > 0)
         .slice(-MAX_REPLIES)
+      const playing = await read($, playback)
+      const reading = playing.mine ? before.find(r => r.id === playing.ref) : undefined
+      if (reading && !rebuilt.some(r => r.id === reading.id)) {
+        rebuilt.push(reading) // its text differs from the saved chat's: it stays, as the last
+      }
+      const live = reading ? rebuilt.findIndex(r => r.id === reading.id) : -1
       await update($, replies, () => rebuilt)
-      await update($, view, () => Math.max(0, rebuilt.length - 1))
+      await update($, view, () => (live >= 0 ? live : Math.max(0, rebuilt.length - 1)))
       await update($, top, () => 0)
     }
     const nextVoice = async () => {

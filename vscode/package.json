@@ -2,7 +2,7 @@
   "name": "read-aloud-for-claude-code",
   "displayName": "Read Aloud for Claude Code",
   "description": "Hear Claude Code replies read aloud with a natural local voice, and replay any sentence. One-click setup; also works with Codex, Gemini CLI and Cursor.",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "publisher": "abdalrhman-attar",
   "license": "MIT",
   "icon": "media/icon.png",

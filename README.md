@@ -112,6 +112,8 @@ To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disco
 
 Sending a message stops the current reply.
 
+Voice typing pauses it: while Claude Code's voice input, the system's dictation or a dictation app (Wispr Flow, superwhisper, MacWhisper, VoiceInk) records, the reply being read pauses and new ones wait; it goes on 1.5 seconds after you stop, unless you sent the message. Set `"pauseForMic"` in `~/.claude/kokoro/settings.json` to `"any"` to pause for every program that records, calls included, or `"off"`; the VS Code panel has it as **Pause while I dictate**. Seeing which program records needs macOS 14 or later, or Windows; on Linux only `"any"` works.
+
 ## Pronunciation
 
 Built-in rules read tech text the way people say it: plural acronyms ("PRs", "APIs"), units ("200ms", "4GB", "60fps"), dates ("2026-10-31"), times ("3:15"), money ("$20", "$1.5k"), versions ("v2.1.0"), issue numbers ("#42"), IP addresses and ports ("localhost:3000"), pairs like "CI/CD" and "I/O", key combinations ("Cmd+K"), operators ("==", "&&", "||"), paths, links and secrets.
