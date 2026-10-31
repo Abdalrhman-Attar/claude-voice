@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{csp}}; script-src 'nonce-{{nonce}}';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="{{css}}" />
+  <title>Claude Voice</title>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <button class="icon" id="prev" title="Previous reply" aria-label="Previous reply">‹</button>
+      <select id="pick" aria-label="Reply"></select>
+      <button class="icon" id="next" title="Next reply" aria-label="Next reply">›</button>
+    </div>
+    <div class="transport">
+      <button class="primary" id="playAll">▶ Play</button>
+      <button id="pause">❚❚ Pause</button>
+      <button id="skip">⏭ Skip</button>
+      <button id="stop">■ Stop</button>
+      <span id="state" class="state"></span>
+    </div>
+  </header>
+
+  <main id="list" tabindex="0" aria-label="Sentences"></main>
+
+  <div id="setup" class="setup" hidden>
+    <p><strong>The voice is not set up yet.</strong></p>
+    <p>It runs Kokoro, a natural voice, entirely on your computer. Setup installs Python packages and a 350 MB model.</p>
+    <button class="primary" id="runSetup">Set up the voice</button>
+  </div>
+
+  <footer>
+    <div class="row">
+      <label class="field">Voice
+        <select id="voice"></select>
+      </label>
+      <label class="field speed">Speed
+        <input id="speed" type="range" min="0.7" max="1.6" step="0.1" />
+        <output id="speedOut"></output>
+      </label>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="autoSpeak" /> Auto-speak</label>
+      <label><input type="checkbox" id="awayOnly" /> Only when away</label>
+      <label><input type="checkbox" id="live" /> While typing</label>
+      <label title="Off: only the final reply is spoken"><input type="checkbox" id="workUpdates" /> Work updates</label>
+      <label><input type="checkbox" id="projectVoices" /> Voice per project</label>
+      <label><input type="checkbox" id="summarize" /> Summarize long</label>
+    </div>
+  </footer>
+  <script nonce="{{nonce}}" src="{{js}}"></script>
+</body>
+</html>

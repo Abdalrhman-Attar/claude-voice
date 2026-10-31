@@ -49,6 +49,17 @@ Then, in Claude Code:
 
 Open the pane with `/speak` (it opens by itself in a terminal 144 columns or wider).
 
+## VS Code extension
+
+`vscode/` holds **Claude Voice**, a VS Code extension (also works in Cursor and Windsurf): a Replies panel in the activity bar with every recent reply from every agent, click a sentence to read from it, the spoken sentence highlighted, controls in the status bar and keyboard shortcuts (ctrl+cmd+. stop, ctrl+cmd+, pause, ctrl+cmd+/ skip; ctrl+alt on Windows and Linux).
+
+```sh
+cd vscode && npm install && npm run package
+code --install-extension claude-voice-0.1.0.vsix
+```
+
+It reads `replies.json` and `status.json` in `~/.claude/kokoro`, which the voice server writes, and shares `settings.json` with the Claude Code plugin.
+
 ## Other agents
 
 The same voice can read replies from Codex, Gemini CLI and Cursor, and any MCP client can call it. Every agent shares one queue, so they take turns instead of talking over each other, each introduced as "From Codex in my-app" when several are active. Mute, only when away and summaries follow the Speak pane's settings.

@@ -1,0 +1,64 @@
+{
+  "name": "claude-voice",
+  "displayName": "Claude Voice",
+  "description": "Hear Claude Code, Codex, Gemini and Cursor replies read aloud with a natural local voice, and replay any sentence.",
+  "version": "0.1.0",
+  "publisher": "abdalrhman-attar",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": { "type": "git", "url": "https://github.com/Abdalrhman-Attar/claude-voice" },
+  "homepage": "https://github.com/Abdalrhman-Attar/claude-voice",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other", "AI"],
+  "keywords": ["claude", "claude code", "text to speech", "tts", "kokoro", "voice", "codex", "gemini"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "claudeVoice", "title": "Claude Voice", "icon": "media/activity.svg" }]
+    },
+    "views": {
+      "claudeVoice": [{ "type": "webview", "id": "claudeVoice.replies", "name": "Replies" }]
+    },
+    "commands": [
+      { "command": "claudeVoice.playLatest", "title": "Play latest reply", "category": "Claude Voice", "icon": "$(play)" },
+      { "command": "claudeVoice.pause", "title": "Pause or resume", "category": "Claude Voice", "icon": "$(debug-pause)" },
+      { "command": "claudeVoice.skip", "title": "Skip sentence", "category": "Claude Voice", "icon": "$(debug-step-over)" },
+      { "command": "claudeVoice.stop", "title": "Stop speaking", "category": "Claude Voice", "icon": "$(debug-stop)" },
+      { "command": "claudeVoice.toggleMute", "title": "Mute or unmute auto-speak", "category": "Claude Voice" },
+      { "command": "claudeVoice.show", "title": "Show replies", "category": "Claude Voice" },
+      { "command": "claudeVoice.setup", "title": "Set up the voice", "category": "Claude Voice" }
+    ],
+    "keybindings": [
+      { "command": "claudeVoice.stop", "key": "ctrl+alt+.", "mac": "ctrl+cmd+." },
+      { "command": "claudeVoice.pause", "key": "ctrl+alt+,", "mac": "ctrl+cmd+," },
+      { "command": "claudeVoice.skip", "key": "ctrl+alt+/", "mac": "ctrl+cmd+/" }
+    ],
+    "configuration": {
+      "title": "Claude Voice",
+      "properties": {
+        "claudeVoice.home": {
+          "type": "string",
+          "default": "",
+          "description": "Folder with the voice's Python environment and settings. Empty means KOKORO_HOME, else ~/.claude/kokoro."
+        },
+        "claudeVoice.onlyThisWorkspace": {
+          "type": "boolean",
+          "default": false,
+          "description": "List only replies from sessions in this window's workspace folders."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "bundle-server": "node scripts/bundle-server.js",
+    "compile": "npm run bundle-server && tsc -p .",
+    "package": "npm run compile && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.6.3"
+  }
+}
