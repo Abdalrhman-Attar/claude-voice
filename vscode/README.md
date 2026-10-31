@@ -1,4 +1,4 @@
-# Claude Voice
+# Read Aloud for Claude Code
 
 Hear replies from Claude Code, Codex, Gemini CLI and Cursor read aloud with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx), a natural voice that runs entirely on your computer, and replay any sentence.
 
@@ -8,4 +8,4 @@ Hear replies from Claude Code, Codex, Gemini CLI and Cursor read aloud with [Kok
 
 ## Setup
 
-The voice runs locally (Python and a 350 MB model). Run **Claude Voice: Set up the voice** from the command palette, or the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice). Replies are spoken by the Claude Code plugin and the agent hooks the installer adds; this extension shows and replays them.
+The voice runs locally (Python and a 350 MB model). Run **Read Aloud: Set up the voice** from the command palette, or the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice). Replies are spoken by the Claude Code plugin and the agent hooks the installer adds; this extension shows and replays them.

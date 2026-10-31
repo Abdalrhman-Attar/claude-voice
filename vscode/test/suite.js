@@ -34,7 +34,7 @@ exports.run = async function () {
 
   const config = vscode.workspace.getConfiguration('claudeVoice')
   await config.update('onlyThisWorkspace', false, vscode.ConfigurationTarget.Global) // the feed's replies are elsewhere
-  const ext = vscode.extensions.getExtension('abdalrhman-attar.claude-voice')
+  const ext = vscode.extensions.getExtension('abdalrhman-attar.read-aloud-for-claude-code')
   const api = await ext.activate()
 
   await step('reads the reply feed', () => until('replies loaded', () => api.replies() > 0))

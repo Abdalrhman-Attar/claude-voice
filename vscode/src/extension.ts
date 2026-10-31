@@ -1,4 +1,4 @@
-// Claude Voice for VS Code: a panel of recent replies from every agent (Claude Code, Codex,
+// Read Aloud for Claude Code (VS Code): a panel of recent replies from every agent (Claude Code, Codex,
 // Gemini, Cursor), read aloud by the local Kokoro server, with a sentence-level player.
 //
 // The voice server records replies in replies.json and its progress in status.json, both in the
@@ -63,7 +63,7 @@ class Voice {
     return new Promise(resolve => {
       if (!this.ready()) {
         void vscode.window
-          .showWarningMessage('The Claude Voice voice is not set up yet.', 'Set up')
+          .showWarningMessage('The Read Aloud voice is not set up yet.', 'Set up')
           .then(pick => pick && vscode.commands.executeCommand('claudeVoice.setup'))
         return resolve()
       }
@@ -230,10 +230,10 @@ function statusText(store: Store): { text: string; tooltip: string } {
   const reply = store.replies.find(r => r.id === s.ref && r.session === s.session)
   const where = reply ? ` · ${reply.label}` : ''
   const of = reply && typeof s.index === 'number' ? ` ${s.index + 1}/${reply.sentences.length}` : ''
-  if (s.state === 'playing') return { text: `$(unmute) Speaking${of}`, tooltip: `Claude Voice: speaking${where}. Click to stop.` }
-  if (s.state === 'paused') return { text: `$(debug-pause) Paused${of}`, tooltip: `Claude Voice: paused${where}. Click to stop.` }
-  if (store.muted()) return { text: '$(mute)', tooltip: 'Claude Voice: auto-speak is muted. Click to show replies.' }
-  return { text: '$(unmute)', tooltip: 'Claude Voice: click to show replies.' }
+  if (s.state === 'playing') return { text: `$(unmute) Speaking${of}`, tooltip: `Read Aloud: speaking${where}. Click to stop.` }
+  if (s.state === 'paused') return { text: `$(debug-pause) Paused${of}`, tooltip: `Read Aloud: paused${where}. Click to stop.` }
+  if (store.muted()) return { text: '$(mute)', tooltip: 'Read Aloud: auto-speak is muted. Click to show replies.' }
+  return { text: '$(unmute)', tooltip: 'Read Aloud: click to show replies.' }
 }
 
 // What the extension exposes to its integration tests.
@@ -285,7 +285,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     ),
     vscode.commands.registerCommand('claudeVoice.setup', () => {
       const bundle = path.join(context.extensionPath, 'bundle')
-      const terminal = vscode.window.createTerminal({ name: 'Claude Voice setup', cwd: bundle })
+      const terminal = vscode.window.createTerminal({ name: 'Read Aloud setup', cwd: bundle })
       terminal.show()
       terminal.sendText(
         process.platform === 'win32' ? 'powershell -ExecutionPolicy Bypass -File .\\install.ps1' : 'bash ./install.sh',

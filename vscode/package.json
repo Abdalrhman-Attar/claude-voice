@@ -1,8 +1,8 @@
 {
-  "name": "claude-voice",
-  "displayName": "Claude Voice",
-  "description": "Hear Claude Code, Codex, Gemini and Cursor replies read aloud with a natural local voice, and replay any sentence.",
-  "version": "0.3.1",
+  "name": "read-aloud-for-claude-code",
+  "displayName": "Read Aloud for Claude Code",
+  "description": "Hear Claude Code replies read aloud with a natural local voice, and replay any sentence. Also works with Codex, Gemini CLI and Cursor.",
+  "version": "0.3.2",
   "publisher": "abdalrhman-attar",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -37,7 +37,7 @@
       "activitybar": [
         {
           "id": "claudeVoice",
-          "title": "Claude Voice",
+          "title": "Read Aloud",
           "icon": "media/activity.svg"
         }
       ]
@@ -55,41 +55,41 @@
       {
         "command": "claudeVoice.playLatest",
         "title": "Play latest reply",
-        "category": "Claude Voice",
+        "category": "Read Aloud",
         "icon": "$(play)"
       },
       {
         "command": "claudeVoice.pause",
         "title": "Pause or resume",
-        "category": "Claude Voice",
+        "category": "Read Aloud",
         "icon": "$(debug-pause)"
       },
       {
         "command": "claudeVoice.skip",
         "title": "Skip sentence",
-        "category": "Claude Voice",
+        "category": "Read Aloud",
         "icon": "$(debug-step-over)"
       },
       {
         "command": "claudeVoice.stop",
         "title": "Stop speaking",
-        "category": "Claude Voice",
+        "category": "Read Aloud",
         "icon": "$(debug-stop)"
       },
       {
         "command": "claudeVoice.toggleMute",
         "title": "Mute or unmute auto-speak",
-        "category": "Claude Voice"
+        "category": "Read Aloud"
       },
       {
         "command": "claudeVoice.show",
         "title": "Show replies",
-        "category": "Claude Voice"
+        "category": "Read Aloud"
       },
       {
         "command": "claudeVoice.setup",
         "title": "Set up the voice",
-        "category": "Claude Voice"
+        "category": "Read Aloud"
       }
     ],
     "keybindings": [
@@ -110,7 +110,7 @@
       }
     ],
     "configuration": {
-      "title": "Claude Voice",
+      "title": "Read Aloud for Claude Code",
       "properties": {
         "claudeVoice.home": {
           "type": "string",
