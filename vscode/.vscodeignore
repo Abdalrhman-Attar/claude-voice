@@ -1,8 +1,10 @@
 src/**
 scripts/**
 node_modules/**
+test/**
+dev/**
+.vscode-test/**
+.gitignore
 tsconfig.json
 *.vsix
-dev/**
-test/run.js test/suite.js
-.vscode-test/vscode-darwin-arm64-1.144.0
+**/__pycache__/**

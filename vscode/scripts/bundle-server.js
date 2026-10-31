@@ -8,7 +8,7 @@ const out = path.join(__dirname, '..', 'bundle')
 fs.rmSync(out, { recursive: true, force: true })
 fs.mkdirSync(path.join(out, 'server'), { recursive: true })
 for (const f of fs.readdirSync(path.join(repo, 'server'))) {
-  if (/\.(py|json|txt)$/.test(f)) fs.copyFileSync(path.join(repo, 'server', f), path.join(out, 'server', f))
+  if (/\.(py|json|txt)$/.test(f) && !f.startsWith('.')) fs.copyFileSync(path.join(repo, 'server', f), path.join(out, 'server', f))
 }
 for (const f of ['install.sh', 'install.ps1']) fs.copyFileSync(path.join(repo, f), path.join(out, f))
 fs.chmodSync(path.join(out, 'install.sh'), 0o755)
