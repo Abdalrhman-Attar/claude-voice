@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Second half of install.sh / install.ps1, run with the voice's own Python environment:
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
-#   install_helper.py install [--agents codex,gemini,cursor,mcp] | uninstall
+#   install_helper.py install [--agents codex,gemini,cursor,mcp] [--arabic] | uninstall
+#   install_helper.py arabic         adds the Arabic voice (about 230 MB)
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
 import json, os, shutil, ssl, subprocess, sys, urllib.request
 
@@ -31,21 +32,48 @@ def tls():
         return ssl.create_default_context()
 
 
+def fetch(url, path, name):
+    print(f"Downloading {name}")
+    with urllib.request.urlopen(url, context=tls()) as r, open(path + ".part", "wb") as f:
+        total, done = int(r.headers.get("Content-Length") or 0), 0
+        while chunk := r.read(1 << 20):
+            f.write(chunk)
+            done += len(chunk)
+            if total:
+                print(f"\r  {done * 100 // total}% of {total >> 20} MB", end="", flush=True)
+    print()
+    os.replace(path + ".part", path)
+
+
 def download():
     for name in ("kokoro-v1.0.onnx", "voices-v1.0.bin"):
         path = os.path.join(HOME, name)
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            continue
-        print(f"Downloading {name}")
-        with urllib.request.urlopen(f"{MODELS}/{name}", context=tls()) as r, open(path + ".part", "wb") as f:
-            total, done = int(r.headers.get("Content-Length") or 0), 0
-            while chunk := r.read(1 << 20):
-                f.write(chunk)
-                done += len(chunk)
-                if total:
-                    print(f"\r  {done * 100 // total}% of {total >> 20} MB", end="", flush=True)
-        print()
-        os.replace(path + ".part", path)
+        if not (os.path.exists(path) and os.path.getsize(path) > 0):
+            fetch(f"{MODELS}/{name}", path, name)
+
+
+def arabic():
+    """The Arabic voice (Nabra-82M) and its diacritizer (CATT), about 230 MB."""
+    import zipfile
+
+    sys.path.insert(0, CODE)
+    import arabic as voice
+
+    os.makedirs(voice.DIR, exist_ok=True)
+    for name, url in voice.FILES.items():
+        path = os.path.join(voice.DIR, name)
+        if name == "catt.zip":
+            if os.path.exists(os.path.join(voice.DIR, "encoder.onnx")):
+                continue
+            fetch(url, path, "the Arabic diacritizer")
+            with zipfile.ZipFile(path) as z:
+                for member in ("encoder.onnx", "decoder.onnx"):
+                    with z.open(member) as src, open(os.path.join(voice.DIR, member), "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+            os.remove(path)
+        elif not os.path.exists(path):
+            fetch(url, path, "the Arabic voice" if name.endswith(".onnx") else name)
+    print("Arabic voice installed. It is used from the next Arabic sentence.")
 
 
 def lexicon():
@@ -61,6 +89,8 @@ def copy_app():
     for f in os.listdir(CODE):
         if f.endswith((".py", ".json", ".txt")):
             shutil.copy(os.path.join(CODE, f), os.path.join(APP, f))
+    shutil.copytree(os.path.join(CODE, "catt"), os.path.join(APP, "catt"), dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
 
 
 def claude_cli():
@@ -330,6 +360,9 @@ def agent_list(arg):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args == ["arabic"]:
+        arabic()
+        sys.exit(0)
     if args == ["plugin"]:
         sys.exit(0 if plugin() else 1)
     if args[:1] in (["connect"], ["disconnect"]) and len(args) == 2:
@@ -347,6 +380,8 @@ if __name__ == "__main__":
     copy_app()
     autostart(True)
     shortcut()
+    if "--arabic" in args:
+        arabic()
     if "--no-plugin" not in args:
         plugin()
     if "--agents" in args and args.index("--agents") + 1 < len(args):

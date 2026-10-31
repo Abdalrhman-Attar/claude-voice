@@ -6,7 +6,7 @@
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
-import system_voice, transport
+import arabic as arabic_voice, system_voice, transport
 from transcripts import Watcher
 from collections import OrderedDict
 
@@ -308,15 +308,39 @@ def output():
         return stream
 
 
+def drop_output():
+    """Forgets a stream the device broke (unplugged headphones, a new default output): the next
+    sound opens a fresh one at the new device's rate."""
+    global stream, out_rate
+    with out_lock:
+        old, stream, out_rate = stream, None, None
+    with model_lock:
+        cache.clear()  # made at the old device's rate
+    try:
+        if old is not None:
+            old.close(ignore_errors=True)
+    except Exception:
+        pass
+
+
 def write(out, data, quiet=False):
-    """Blocking write; `quiet` writes are filler that neither logs an underrun nor counts as sound."""
+    """Blocking write; `quiet` writes are filler that neither logs an underrun nor counts as sound.
+    False when the device failed, and the stream is dropped."""
     global underruns, last_sound
     with out_lock:
-        if out.write(np.ascontiguousarray(data, dtype="float32").reshape(-1, 1)) and not quiet:
-            underruns += 1
-            log("underrun", underruns)
+        if out is not stream:
+            return False
+        try:
+            if out.write(np.ascontiguousarray(data, dtype="float32").reshape(-1, 1)) and not quiet:
+                underruns += 1
+                log("underrun", underruns)
+        except sd.PortAudioError as err:
+            log("audio device error:", err)
+            drop_output()
+            return False
     if not quiet:
         last_sound = time.time()
+    return True
 
 
 def feed_silence(seconds=BLOCK_SECONDS):
@@ -337,16 +361,25 @@ def rest_output():
 def keep_warm():
     """Feeds silence between replies, then rests the device once WARM_SECONDS pass quietly."""
     while True:
-        with cond:
-            playing = current is not None and not current.done.is_set()
-        if playing or stream is None or not stream.active:
-            time.sleep(BLOCK_SECONDS)
-        elif time.time() - last_sound > WARM_SECONDS:
-            rest_output()
-        else:
-            with out_lock:
-                if stream is not None and stream.active:
-                    write(stream, np.zeros(int(BLOCK_SECONDS * stream.samplerate), dtype="float32"), quiet=True)
+        try:
+            warm_once()
+        except Exception as err:
+            log("keep warm:", err)
+            drop_output()
+            time.sleep(1)
+
+
+def warm_once():
+    with cond:
+        playing = current is not None and not current.done.is_set()
+    if playing or stream is None or not stream.active:
+        time.sleep(BLOCK_SECONDS)
+    elif time.time() - last_sound > WARM_SECONDS:
+        rest_output()
+    else:
+        with out_lock:
+            if stream is not None and stream.active:
+                write(stream, np.zeros(int(BLOCK_SECONDS * stream.samplerate), dtype="float32"), quiet=True)
 
 
 TARGET_RMS = 0.1  # every sentence is levelled to about this loudness (Kokoro's own average)
@@ -391,13 +424,20 @@ def synth(said, voice, speed):
 
 
 def voices_for(said, voice, speed):
-    """(samples, rate) for each piece of a sentence: Kokoro's voice, and the system's for Arabic."""
+    """(samples, rate) for each piece of a sentence: Kokoro's voice, and for Arabic Nabra's or the system's."""
     out = []
-    for text, arabic in system_voice.pieces(said):
+    nabra = arabic_voice.installed()  # reads only Arabic: English words go to Kokoro
+    for text, arabic in system_voice.pieces(said, whole=not nabra):
         if not arabic:
             out.append(kokoro.create(text, voice=voice, speed=speed, lang=lang_for(voice)))
             continue
-        made = system_voice.synth(text, speed)
+        try:
+            made = arabic_voice.synth(text, speed) if nabra else None
+        except Exception as err:
+            log("arabic voice error:", err)
+            made = None
+        if made is None:
+            made = system_voice.synth(text, speed)
         if made is None:
             if not warned_no_voice:
                 warned_no_voice.append(True)
@@ -505,7 +545,12 @@ class Job:
         silence and keeps feeding silence (so the device never runs dry); resuming fades back in
         from the same sample. Skip and stop fade out, then end."""
         self.skipping = False
-        out = output()
+        try:
+            out = output()
+        except Exception as err:
+            log("audio device error:", err)
+            drop_output()
+            return
         rate = out.samplerate
         pos = 0
         gain = 1.0 if self.running.is_set() else 0.0
@@ -517,13 +562,15 @@ class Job:
             if gain == 0.0 and target == 0.0:
                 if ending:
                     return
-                write(out, np.zeros(block, dtype="float32"))  # paused: hold the position
+                if not write(out, np.zeros(block, dtype="float32")):  # paused: hold the position
+                    return
                 continue
             if pos >= len(samples):
                 return
             ramp = np.clip(gain + np.sign(target - gain) * step * np.arange(1, block + 1), 0.0, 1.0)
             chunk = samples[pos:pos + block]
-            write(out, chunk * ramp[:len(chunk)])
+            if not write(out, chunk * ramp[:len(chunk)]):
+                return  # the device failed: the next sentence opens it again
             pos += len(chunk)
             gain = float(ramp[len(chunk) - 1])
 

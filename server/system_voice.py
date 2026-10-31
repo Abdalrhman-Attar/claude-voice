@@ -20,12 +20,12 @@ def mostly_arabic(text):
     return bool(letters) and sum(1 for c in letters if LETTER.match(c)) * 2 >= len(letters)
 
 
-def pieces(text):
-    """[(text, is_arabic)] in order: a mostly Arabic sentence stays whole (the Arabic voice reads
-    its English words well enough), otherwise each Arabic stretch is cut out of the English."""
+def pieces(text, whole=True):
+    """[(text, is_arabic)] in order: with whole, a mostly Arabic sentence stays in one piece (a
+    system voice reads its English words well enough); otherwise each Arabic stretch is cut out."""
     if not has_arabic(text):
         return [(text, False)]
-    if mostly_arabic(text):
+    if whole and mostly_arabic(text):
         return [(text, True)]
     out, pos = [], 0
     for m in RUN.finditer(text):

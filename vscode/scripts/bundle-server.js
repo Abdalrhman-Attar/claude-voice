@@ -10,6 +10,8 @@ fs.mkdirSync(path.join(out, 'server'), { recursive: true })
 for (const f of fs.readdirSync(path.join(repo, 'server'))) {
   if (/\.(py|json|txt)$/.test(f) && !f.startsWith('.')) fs.copyFileSync(path.join(repo, 'server', f), path.join(out, 'server', f))
 }
+// server/catt: the Arabic diacritizer's text code.
+fs.cpSync(path.join(repo, 'server', 'catt'), path.join(out, 'server', 'catt'), { recursive: true, filter: f => !f.includes('__pycache__') })
 for (const f of ['install.sh', 'install.ps1']) fs.copyFileSync(path.join(repo, f), path.join(out, f))
 fs.chmodSync(path.join(out, 'install.sh'), 0o755)
 fs.copyFileSync(path.join(repo, 'LICENSE'), path.join(__dirname, '..', 'LICENSE'))

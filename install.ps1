@@ -1,8 +1,9 @@
 # Sets up the local Kokoro voice for the speak-pane Claude Code plugin on Windows (x64 and ARM64).
 #   powershell -ExecutionPolicy Bypass -File install.ps1             install
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Agents codex,gemini,cursor,mcp
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Arabic     also the Arabic voice (about 230 MB)
 #   powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
-param([switch]$Uninstall, [string]$Agents = '')
+param([switch]$Uninstall, [string]$Agents = '', [switch]$Arabic)
 $ErrorActionPreference = 'Stop'
 
 $Repo = $PSScriptRoot
@@ -56,4 +57,7 @@ if (-not $Py) {
 }
 if ($LASTEXITCODE -ne 0) { throw 'pip install failed' }
 
-if ($Agents) { & $VenvPy $Helper install --agents $Agents } else { & $VenvPy $Helper install }
+$HelperArgs = @('install')
+if ($Agents) { $HelperArgs += @('--agents', $Agents) }
+if ($Arabic) { $HelperArgs += '--arabic' }
+& $VenvPy $Helper @HelperArgs

@@ -47,14 +47,18 @@ function serverDir(bundled: string): string {
 }
 
 // Keeps the stable copy current after an extension update; true when a file changed.
-function syncApp(bundled: string): boolean {
-  const app = path.join(home(), 'app')
+function syncApp(bundled: string, app = path.join(home(), 'app')): boolean {
   if (!fs.existsSync(app)) return false
   let changed = false
   for (const f of fs.readdirSync(bundled)) {
-    if (!/\.(py|json|txt)$/.test(f)) continue
     const from = path.join(bundled, f)
     const to = path.join(app, f)
+    if (f === 'catt') {
+      fs.mkdirSync(to, { recursive: true })
+      changed = syncApp(from, to) || changed
+      continue
+    }
+    if (!/\.(py|json|txt)$/.test(f)) continue
     try {
       if (!fs.existsSync(to) || fs.readFileSync(to, 'utf8') !== fs.readFileSync(from, 'utf8')) {
         fs.copyFileSync(from, to)
@@ -361,6 +365,29 @@ export function activate(context: vscode.ExtensionContext): Api {
     })
   }
   view.onSetup = runSetup
+  const addArabic = () =>
+    vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Adding the Arabic voice (about 230 MB)' },
+      progress =>
+        new Promise<void>(resolve => {
+          const helper = path.join(serverDir(server), 'install_helper.py')
+          const child = spawn(python(), [helper, 'arabic'], { env: { ...process.env, KOKORO_HOME: home() }, windowsHide: true })
+          let out = ''
+          const read = (d: Buffer) => {
+            out += d
+            const line = String(d).split(/[\r\n]/).filter(Boolean).at(-1)
+            if (line) progress.report({ message: line.trim() })
+          }
+          child.stdout.on('data', read)
+          child.stderr.on('data', read)
+          child.on('exit', code => {
+            void (code === 0
+              ? vscode.window.showInformationMessage('Arabic voice added. Arabic text is read in it from the next sentence.')
+              : vscode.window.showErrorMessage(`Adding the Arabic voice failed: ${out.trim().split('\n').slice(-2).join(' ')}`))
+            resolve()
+          })
+        }),
+    )
   view.onPlugin = () => {
     const helper = path.join(serverDir(server), 'install_helper.py')
     const child = spawn(python(), [helper, 'plugin'], { env: { ...process.env, KOKORO_HOME: home() }, windowsHide: true })
@@ -386,6 +413,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     { dispose: () => clearInterval(pinger) },
     vscode.window.registerWebviewViewProvider('claudeVoice.replies', view, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('claudeVoice') && view.push()),
+    vscode.commands.registerCommand('claudeVoice.addArabic', () => (voice.ready() ? addArabic() : runSetup())),
     vscode.commands.registerCommand('claudeVoice.show', () => vscode.commands.executeCommand('claudeVoice.replies.focus')),
     vscode.commands.registerCommand('claudeVoice.playLatest', () => {
       const reply = latest()

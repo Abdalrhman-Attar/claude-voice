@@ -122,7 +122,15 @@ A word list (`server/pronounce.default.json`, about 100 entries such as RAM, JSO
 { "Careem": "kareem", "kubectl": "cube control" }
 ```
 
-Arabic text is said by your system's Arabic voice, since Kokoro has none: Majed on macOS, an installed Arabic voice on Windows (Settings, Time & language, Speech), or `espeak-ng` on Linux. A mostly Arabic sentence is read whole in that voice; Arabic words inside an English sentence are cut in. With no Arabic voice, Arabic text is skipped.
+### Arabic
+
+Kokoro has no Arabic voice, so Arabic is read by one of these, best first:
+
+1. **Nabra**, a neural Arabic voice (Modern Standard Arabic, about 230 MB). Add it with `./install.sh --arabic` (Windows: `install.ps1 -Arabic`), or in VS Code with **Read Aloud: Add the Arabic voice**. Written Arabic leaves out short vowels, so [CATT](https://github.com/abjadai/catt) adds them first; it guesses a word wrong now and then. English words in an Arabic sentence stay in your Kokoro voice.
+2. Your system's Arabic voice: Majed on macOS, an installed Arabic voice on Windows (Settings, Time & language, Speech), or `espeak-ng` on Linux.
+3. With neither, Arabic text is skipped instead of being read letter by letter.
+
+Nabra-82M is by [oddadmix](https://huggingface.co/oddadmix/Nabra-82M-v0.1), packaged as ONNX by [marwanelamami](https://huggingface.co/marwanelamami/nabra-82m-sherpa-onnx); CATT is by Abjad AI. Both are Apache 2.0.
 
 Changes apply to the next sentence. [`docs/voice-test.md`](docs/voice-test.md) has a test text that exercises every rule.
 

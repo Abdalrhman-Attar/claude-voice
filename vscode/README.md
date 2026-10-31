@@ -11,3 +11,5 @@ Hear replies from Claude Code, Codex, Gemini CLI and Cursor read aloud with [Kok
 Open the **Read Aloud** panel and click **Set up**. It installs everything in one step, with progress shown: Python if you need it (a private copy, via uv), the voice and its 350 MB model, start at login, and the Claude Code plugin. Then **Test the voice**.
 
 Finished Claude Code replies are spoken right away, read from Claude Code's session files. The plugin adds speech while Claude types. Codex, Gemini CLI and Cursor can be connected with the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice).
+
+**Arabic:** run **Read Aloud: Add the Arabic voice** from the Command Palette to read Arabic in Nabra, a neural Arabic voice (about 230 MB). Without it, Arabic uses your system's Arabic voice (Majed on macOS).
