@@ -2,54 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{csp}}; script-src 'nonce-{{nonce}}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{csp}}; font-src {{csp}}; script-src 'nonce-{{nonce}}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="{{codicons}}" />
   <link rel="stylesheet" href="{{css}}" />
   <title>Claude Voice</title>
 </head>
 <body>
   <header>
-    <div class="nav">
-      <button class="icon" id="prev" title="Previous reply" aria-label="Previous reply">‹</button>
-      <select id="pick" aria-label="Reply"></select>
-      <button class="icon" id="next" title="Next reply" aria-label="Next reply">›</button>
+    <div class="sessions" id="sessionRow">
+      <i class="codicon codicon-comment-discussion" aria-hidden="true"></i>
+      <select id="session" aria-label="Session"></select>
     </div>
-    <div class="transport">
-      <button class="primary" id="playAll">▶ Play all</button>
-      <button id="pause">❚❚ Pause</button>
-      <button id="skip">⏭ Skip</button>
-      <button id="stop">■ Stop</button>
-      <span id="state" class="state"></span>
+    <div class="picker">
+      <button class="action" id="prev" title="Previous reply (←)" aria-label="Previous reply"><i class="codicon codicon-chevron-left"></i></button>
+      <select id="pick" aria-label="Reply"></select>
+      <button class="action" id="next" title="Next reply (→)" aria-label="Next reply"><i class="codicon codicon-chevron-right"></i></button>
+    </div>
+    <div class="toolbar" role="toolbar" aria-label="Playback">
+      <button class="action primary" id="playAll" title="Play the whole reply"><i class="codicon codicon-play"></i><span>Play all</span></button>
+      <button class="action" id="pause" title="Pause or resume (space)" aria-label="Pause"><i class="codicon codicon-debug-pause"></i></button>
+      <button class="action" id="skip" title="Skip to the next sentence" aria-label="Skip"><i class="codicon codicon-debug-step-over"></i></button>
+      <button class="action" id="stop" title="Stop (esc)" aria-label="Stop"><i class="codicon codicon-debug-stop"></i></button>
+      <span id="state" class="state" aria-live="polite"></span>
     </div>
   </header>
 
   <main id="list" tabindex="0" aria-label="Sentences"></main>
 
   <div id="setup" class="setup" hidden>
-    <p><strong>The voice is not set up yet.</strong></p>
-    <p>It runs Kokoro, a natural voice, entirely on your computer. Setup installs Python packages and a 350 MB model.</p>
-    <button class="primary" id="runSetup">Set up the voice</button>
+    <i class="codicon codicon-unmute"></i>
+    <h2>Set up the voice</h2>
+    <p>Kokoro reads replies with a natural voice that runs entirely on your computer. Setup installs a few Python packages and a 350 MB model.</p>
+    <button class="button" id="runSetup">Set up the voice</button>
   </div>
 
   <footer>
-    <div class="row">
-      <label class="field">Voice
-        <select id="voice"></select>
-      </label>
-      <label class="field speed">Speed
-        <input id="speed" type="range" min="0.7" max="1.6" step="0.1" />
-        <output id="speedOut"></output>
-      </label>
-    </div>
-    <div class="toggles">
-      <label title="Off: only sessions working in this window's folder"><input type="checkbox" id="allSessions" /> All sessions</label>
-      <label><input type="checkbox" id="autoSpeak" /> Auto-speak</label>
-      <label><input type="checkbox" id="awayOnly" /> Only when away</label>
-      <label><input type="checkbox" id="live" /> While typing</label>
-      <label title="Off: only the final reply is spoken"><input type="checkbox" id="workUpdates" /> Work updates</label>
-      <label><input type="checkbox" id="projectVoices" /> Voice per project</label>
-      <label><input type="checkbox" id="summarize" /> Summarize long</label>
-    </div>
+    <section class="group" data-group="voice">
+      <button class="group-head" aria-expanded="false"><i class="codicon codicon-chevron-right"></i>Voice<span id="voiceSummary" class="summary"></span></button>
+      <div class="group-body" hidden>
+        <div class="setting">
+          <label for="voice">Voice</label>
+          <select id="voice"></select>
+        </div>
+        <div class="setting">
+          <label for="speed">Speed</label>
+          <div class="slider"><input id="speed" type="range" min="0.7" max="1.6" step="0.1" /><output id="speedOut"></output></div>
+        </div>
+      </div>
+    </section>
+    <section class="group" data-group="speak">
+      <button class="group-head" aria-expanded="false"><i class="codicon codicon-chevron-right"></i>When to speak<span id="speakSummary" class="summary"></span></button>
+      <div class="group-body" hidden>
+        <label class="check"><input type="checkbox" id="autoSpeak" /><span>Read replies aloud<small>Off mutes auto-speak; play still works</small></span></label>
+        <label class="check"><input type="checkbox" id="awayOnly" /><span>Only when away<small>Quiet while the terminal or editor is in front</small></span></label>
+        <label class="check"><input type="checkbox" id="live" /><span>While typing<small>Start speaking before the reply is finished</small></span></label>
+        <label class="check"><input type="checkbox" id="workUpdates" /><span>Work updates<small>Also read notes between tool calls, not only the final reply</small></span></label>
+        <label class="check"><input type="checkbox" id="summarize" /><span>Summarize long replies<small>Read a short summary when not speaking live</small></span></label>
+      </div>
+    </section>
+    <section class="group" data-group="sessions">
+      <button class="group-head" aria-expanded="false"><i class="codicon codicon-chevron-right"></i>Sessions<span id="sessionSummary" class="summary"></span></button>
+      <div class="group-body" hidden>
+        <label class="check"><input type="checkbox" id="allSessions" /><span>All sessions<small>Off lists only sessions working in this folder</small></span></label>
+        <label class="check"><input type="checkbox" id="projectVoices" /><span>A voice per project<small>Tell sessions apart by ear</small></span></label>
+      </div>
+    </section>
   </footer>
   <script nonce="{{nonce}}" src="{{js}}"></script>
 </body>

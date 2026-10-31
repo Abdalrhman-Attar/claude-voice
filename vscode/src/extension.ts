@@ -175,6 +175,7 @@ class RepliesView implements vscode.WebviewViewProvider {
       .readFileSync(path.join(media.fsPath, 'panel.html'), 'utf8')
       .replace(/\{\{csp\}\}/g, view.webview.cspSource)
       .replace(/\{\{nonce\}\}/g, nonce)
+      .replace('{{codicons}}', uri('codicons/codicon.css').toString())
       .replace('{{css}}', uri('panel.css').toString())
       .replace('{{js}}', uri('panel.js').toString())
     view.webview.onDidReceiveMessage(msg => this.receive(msg))

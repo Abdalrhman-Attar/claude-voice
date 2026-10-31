@@ -13,3 +13,10 @@ for (const f of fs.readdirSync(path.join(repo, 'server'))) {
 for (const f of ['install.sh', 'install.ps1']) fs.copyFileSync(path.join(repo, f), path.join(out, f))
 fs.chmodSync(path.join(out, 'install.sh'), 0o755)
 fs.copyFileSync(path.join(repo, 'LICENSE'), path.join(__dirname, '..', 'LICENSE'))
+
+// The codicon font, so the panel uses VS Code's own icons.
+const icons = path.join(__dirname, '..', 'media', 'codicons')
+fs.mkdirSync(icons, { recursive: true })
+for (const f of ['codicon.css', 'codicon.ttf']) {
+  fs.copyFileSync(path.join(__dirname, '..', 'node_modules', '@vscode', 'codicons', 'dist', f), path.join(icons, f))
+}

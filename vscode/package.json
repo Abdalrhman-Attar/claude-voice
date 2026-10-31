@@ -2,7 +2,7 @@
   "name": "claude-voice",
   "displayName": "Claude Voice",
   "description": "Hear Claude Code, Codex, Gemini and Cursor replies read aloud with a natural local voice, and replay any sentence.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "abdalrhman-attar",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -137,5 +137,8 @@
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.2.1",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.36"
   }
 }
