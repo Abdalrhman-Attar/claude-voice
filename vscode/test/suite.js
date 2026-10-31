@@ -69,8 +69,9 @@ exports.run = async function () {
   })
   await step('the ▶ on a sentence reads only that one', async () => {
     const r = api.latest()
-    await api.panelMessage({ type: 'playOne', id: r.id, session: r.session, index: 4 })
-    await until('playing sentence 5', () => status().index === 4, 20000)
+    const at = Math.min(4, r.sentences.length - 1) // the latest reply may be short
+    await api.panelMessage({ type: 'playOne', id: r.id, session: r.session, index: at })
+    await until(`playing sentence ${at + 1}`, () => status().index === at, 20000)
     await until('then idle (one sentence only)', () => status().state === 'idle', 30000)
   })
   await step('skip moves to the next sentence', async () => {
