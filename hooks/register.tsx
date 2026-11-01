@@ -529,7 +529,7 @@ export const register: Register = on => {
     // summary row stands in. No hotkeys here: a hotkey draws its letter beside the control.
     const check = (checked: boolean, label: string) => (
       <Text dimColor={!checked}>
-        <Text color={checked ? 'green' : undefined}>{checked ? '☑' : '☐'}</Text> {label}
+        <Text color={checked ? 'green' : undefined}>{checked ? '●' : '○'}</Text> {label}
       </Text>
     )
     const settingRow = (label: string, children: RenderChildren) => (
@@ -608,26 +608,23 @@ export const register: Register = on => {
         </Box>
       </Box>
     )
-    const help = [
-      ['click a line', 'read from that line on'],
-      ['p · a · x · s', 'play all · pause · skip · stop'],
-      ['ctrl+x s, /hush', 'stop from anywhere'],
-      ['b · n', 'previous · next reply'],
-      ['j · k', 'scroll the lines'],
-      ['c', 'settings: voice, speed, output, when to speak, mute, chat history'],
-      ['/mute 30m', 'mute for a while (/mute off)'],
-      ['h', 'this help'],
-    ]
+    // Key help in the settings' shape: a dim label column, then each key and what it does.
+    const key = (k: string, what: string) => (
+      <Text key={`key${k}${what}`}>
+        <Text color="cyan" bold>{k}</Text>
+        <Text dimColor> {what}</Text>
+      </Text>
+    )
     const helpList = (
       <Box flexDirection="column">
         <Text bold>Keys</Text>
-        {help.map(([k, what]) => (
-          <Box key={`help${k}`} flexDirection="row" columnGap={2}>
-            <Box width={16} flexShrink={0}><Text color="cyan">{k}</Text></Box>
-            <Box flexShrink={1}><Text>{what}</Text></Box>
-          </Box>
-        ))}
-        <Box marginTop={1}><Text dimColor>Sending a message stops the reply; voice typing pauses it.</Text></Box>
+        {settingRow('Play', [key('p', 'play all'), key('a', 'pause'), key('x', 'skip'), key('s', 'stop'), key('click', 'read from a line')])}
+        {settingRow('Move', [key('b', 'previous reply'), key('n', 'next reply'), key('k', 'scroll up'), key('j', 'scroll down')])}
+        {settingRow('Anywhere', [key('ctrl+x s', 'stop'), key('/hush', 'stop every session'), key('/mute 30m', 'mute a while'), key('/mute off', 'unmute')])}
+        {settingRow('Pane', [key('c', 'settings'), key('h', 'this help')])}
+        <Box marginTop={1}>
+          <Text dimColor>Sending a message stops the reply. Voice typing pauses it.</Text>
+        </Box>
       </Box>
     )
 
@@ -783,13 +780,15 @@ export const register: Register = on => {
           {panel === 'help' ? helpList : lines}
         </Box>
         <Box flexDirection="column" flexShrink={0}>
-          <Box flexDirection="row" columnGap={1}>
-            <Button key="up" hotkey="k" dimColor={start === 0} onPress={scrollTo(start - page)}>▲</Button>
-            <Button key="down" hotkey="j" dimColor={start + shown >= sentences.length} onPress={scrollTo(start + page)}>▼</Button>
-            <Text dimColor>
-              {start + 1}–{Math.min(sentences.length, start + shown)} of {sentences.length}
-            </Text>
-          </Box>
+          {panel !== 'help' && (
+            <Box flexDirection="row" columnGap={1}>
+              <Button key="up" hotkey="k" dimColor={start === 0} onPress={scrollTo(start - page)}>▲</Button>
+              <Button key="down" hotkey="j" dimColor={start + shown >= sentences.length} onPress={scrollTo(start + page)}>▼</Button>
+              <Text dimColor>
+                {start + 1}–{Math.min(sentences.length, start + shown)} of {sentences.length}
+              </Text>
+            </Box>
+          )}
           {footer}
         </Box>
       </Box>
