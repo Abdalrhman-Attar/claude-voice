@@ -321,3 +321,44 @@ export function questionText(input: unknown): string[] {
     return question ? [`I have a question: ${question}`, ...(labels.length ? [`Options: ${labels.join('; ')}.`] : [])] : []
   })
 }
+
+// Whether a sentence is what is said in place of code or a table ("Shell command.").
+export function isPlaceholder(text: string): boolean {
+  return /^(?:Shell command|Shell commands, \d+ lines|(?:[\w+#. ]+ code|Code block), (?:one line|\d+ lines)|Table, (?:one row|\d+ rows))\.$/.test(text)
+}
+
+const LEAD_MAX = 48
+
+// Whether a sentence opens its paragraph as a short heading ("Several sessions speaking at once."
+// before the details), drawn bold.
+export function isLead(sentences: Sentence[], i: number): boolean {
+  const s = sentences[i]
+  if (!s || isPlaceholder(s.text)) {
+    return false
+  }
+  const opens = i === 0 || sentences[i - 1]?.para !== s.para
+  const followed = sentences[i + 1]?.para === s.para
+
+  return opens && followed && (s.text.endsWith(':') || s.text.length <= LEAD_MAX)
+}
+
+// How long ago, short: "just now", "5m ago", "2h ago", "3d ago".
+export function ago(t: number, now: number): string {
+  const minutes = Math.floor((now - t) / 60000)
+  if (minutes < 1) {
+    return 'just now'
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+  const hours = Math.floor(minutes / 60)
+
+  return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`
+}
+
+// The filled and empty parts of a progress bar `width` wide, at sentence `index` of `count`.
+export function progress(index: number, count: number, width: number): [string, string] {
+  const filled = count > 0 ? Math.round((Math.min(index + 1, count) / count) * width) : 0
+
+  return ['━'.repeat(filled), '─'.repeat(Math.max(0, width - filled))]
+}

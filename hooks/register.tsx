@@ -1,18 +1,22 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Playback, Reply, SpeakSettings } from '../types'
+import type { Panel, Playback, Reply, SpeakSettings } from '../types'
 import {
+  ago,
   completeSentences,
   DEFAULT_SETTINGS,
   fitting,
   IDLE,
+  isLead,
   isMuted,
+  isPlaceholder,
   parseMute,
   parseSettings,
   parseStatus,
   pausesFor,
   permissionText,
+  progress,
   questionText,
   toSentences,
   untilText,
@@ -40,6 +44,8 @@ const view = atom({ plugin: 'speak-pane', key: 'view' } as const, 0)
 const top = atom({ plugin: 'speak-pane', key: 'top' } as const, 0)
 const playback = atom({ plugin: 'speak-pane', key: 'playback' } as const, IDLE)
 const prefs = atom({ plugin: 'speak-pane', key: 'prefs' } as const, DEFAULT_SETTINGS)
+// The list, the settings or the key help, below the header.
+const panelAtom = atom({ plugin: 'speak-pane', key: 'panel' } as const, 'list' as Panel)
 
 type Request = {
   mode: 'reply' | 'play' | 'stop' | 'pause' | 'skip' | 'record'
@@ -369,7 +375,11 @@ export const register: Register = on => {
       liveTurns.delete(e.turnId)
       const isLive = live !== undefined && (await loadSettings($)).live
       // A streamed reply's id names its step, so the server's progress lines up with it.
-      const reply: Reply = { id: isLive ? `${e.turnId}:${live.lastStep}` : e.turnId, sentences: toSentences(e.answer) }
+      const reply: Reply = {
+        id: isLive ? `${e.turnId}:${live.lastStep}` : e.turnId,
+        sentences: toSentences(e.answer),
+        t: await $.clock.now(),
+      }
       const all = await update($, replies, list => [...list, reply].slice(-MAX_REPLIES))
       void send($, { mode: 'record', reply }).catch(() => undefined) // for the VS Code extension's panel
       await update($, view, () => all.length - 1)
@@ -398,7 +408,7 @@ export const register: Register = on => {
     const sentences = reply?.sentences ?? []
     const now = await read($, playback)
     const conf = await read($, prefs)
-    const width = Math.max(10, e.props.bodyColumns - 1)
+    const width = Math.max(10, e.props.bodyColumns - 2) // inside the pane's one-column padding each side
     const rule = <Text dimColor>{'─'.repeat(width)}</Text>
     const live = reply && now.mine && now.ref === reply.id ? now.index : null
 
@@ -448,12 +458,13 @@ export const register: Register = on => {
       }
       // A reply already listed keeps its id, so the one being read stays highlighted and in view.
       const before = await read($, replies)
-      const known = new Map(before.map(r => [r.sentences.map(s => s.text).join('\n'), r.id]))
+      const known = new Map(before.map(r => [r.sentences.map(s => s.text).join('\n'), r]))
       const rebuilt = answers
         .filter((a): a is string => typeof a === 'string')
         .map((a, i) => {
           const sentences = toSentences(a)
-          return { id: known.get(sentences.map(s => s.text).join('\n')) ?? `history-${i}`, sentences }
+          const same = known.get(sentences.map(s => s.text).join('\n'))
+          return { id: same?.id ?? `history-${i}`, sentences, ...(same?.t ? { t: same.t } : {}) }
         })
         .filter(r => r.sentences.length > 0)
         .slice(-MAX_REPLIES)
@@ -509,7 +520,13 @@ export const register: Register = on => {
       }
     }
 
-    const controls = (
+    const panel = await read($, panelAtom)
+    const showPanel = (p: Panel) => async () => {
+      await update($, panelAtom, current => (current === p ? 'list' : p))
+    }
+
+    // Everything the settings hold, shown when ⚙ is open; folded, one summary row stands in.
+    const settingsRows = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         <Button key="voice" plain hotkey="v" onPress={nextVoice}>
           <Text dimColor>voice </Text>
@@ -546,57 +563,134 @@ export const register: Register = on => {
         <Button key="summary" plain onPress={toggle('summarize')}>
           <Text dimColor={!conf.summarize || conf.live}>{conf.summarize ? '☑' : '☐'} summarize long{conf.live ? ' (when not live)' : ''}</Text>
         </Button>
+        {reply && <Button key="rebuild" plain hotkey="r" onPress={rebuild}>⟳ load chat history</Button>}
       </Box>
     )
-    const historyButton = (
-      <Button key="rebuild" hotkey="r" dimColor onPress={rebuild}>⟳ Load chat history</Button>
+    const summaryText = [
+      conf.projectVoices ? 'voice per project' : conf.voice,
+      `${conf.speed.toFixed(1)}×`,
+      conf.outputDevice || 'system default',
+      muted ? 'muted' : thisMuted ? 'session muted' : conf.awayOnly ? 'when away' : 'auto-speak',
+    ].join(' · ')
+    const settingsButton = (
+      <Button key="settings" hotkey="c" onPress={showPanel('settings')}>{panel === 'settings' ? '⚙ done' : '⚙'}</Button>
+    )
+    const helpButton = <Button key="help" hotkey="h" onPress={showPanel('help')}>{panel === 'help' ? '? done' : '?'}</Button>
+    const footer = (
+      <Box flexDirection="column" flexShrink={0}>
+        {panel === 'settings' && settingsRows}
+        <Box flexDirection="row" columnGap={1} justifyContent="space-between">
+          <Box flexDirection="row" columnGap={1} flexShrink={1}>
+            {settingsButton}
+            <Text dimColor wrap="truncate-end">{summaryText}</Text>
+          </Box>
+          {helpButton}
+        </Box>
+      </Box>
+    )
+    const help = [
+      ['click a line', 'read from that line on'],
+      ['p · a · x · s', 'play all · pause · skip · stop'],
+      ['ctrl+x s, /hush', 'stop from anywhere'],
+      ['b · n', 'previous · next reply'],
+      ['j · k', 'scroll the lines'],
+      ['c', 'settings: then v voice, o output, m mute, u mute this session, r load chat history'],
+      ['/mute 30m', 'mute for a while (/mute off)'],
+      ['h', 'this help'],
+    ]
+    const helpList = (
+      <Box flexDirection="column">
+        <Text bold>Keys</Text>
+        {help.map(([k, what]) => (
+          <Box key={`help${k}`} flexDirection="row" columnGap={2}>
+            <Box width={16} flexShrink={0}><Text color="cyan">{k}</Text></Box>
+            <Box flexShrink={1}><Text>{what}</Text></Box>
+          </Box>
+        ))}
+        <Box marginTop={1}><Text dimColor>Sending a message stops the reply; voice typing pauses it.</Text></Box>
+      </Box>
     )
 
     const height = Math.max(8, e.props.scroll.bodyRows)
 
-    if (!reply && remote) {
-      return (
-        <Box flexDirection="column" paddingX={1}>
-          <Text bold>Nothing to play yet</Text>
-          <Text dimColor>Claude's replies show up here as they arrive.</Text>
-          <Box marginTop={1}>{historyButton}</Box>
-          <Box marginTop={1}>{controls}</Box>
-        </Box>
-      )
-    }
     if (!reply) {
       return (
         <Box flexDirection="column" paddingX={1} height={height}>
           <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-            <Text bold>Nothing to play yet</Text>
-            <Text dimColor>Claude's replies show up here as they arrive.</Text>
-            <Box marginTop={1}>{historyButton}</Box>
+            {panel === 'help' ? helpList : (
+              <Box flexDirection="column">
+                <Text bold>Nothing to play yet</Text>
+                <Text dimColor>Claude's replies show up here as they arrive.</Text>
+                <Box marginTop={1}>
+                  <Button key="rebuild" hotkey="r" onPress={rebuild}>⟳ Load chat history</Button>
+                </Box>
+              </Box>
+            )}
           </Box>
-          <Box flexDirection="column" flexShrink={0}>
-            {rule}
-            {controls}
-          </Box>
+          {rule}
+          {footer}
         </Box>
       )
     }
 
     const isLatest = at === list.length - 1
-    const status =
-      now.state === 'idle'
-        ? `${sentences.length} sentences`
-        : !now.mine
-          ? 'Another session is speaking'
-          : now.state === 'paused'
-            ? 'Paused'
-            : live !== null
-              ? `Speaking ${live + 1} of ${sentences.length}`
-              : 'Speaking'
+    const playing = now.state !== 'idle' && now.mine
+    const status = !now.mine && now.state !== 'idle'
+      ? { text: '♪ another session', color: 'yellow' }
+      : playing
+        ? { text: `${now.state === 'paused' ? '❚❚' : '♪'} ${live !== null ? `${live + 1}/${sentences.length}` : ''}`.trim(), color: 'green' }
+        : muted
+          ? { text: conf.muted ? '✕ muted' : `✕ muted until ${untilText(conf.mutedUntil, clock)}`, color: 'red' }
+          : thisMuted
+            ? { text: '✕ session muted', color: 'red' }
+            : null
+    const details = [`Reply ${at + 1}/${list.length}`, reply.t ? ago(reply.t, clock) : null, `${sentences.length} lines`]
+      .filter(Boolean)
+      .join(' · ')
+    const bar = live !== null ? progress(live, sentences.length, width) : null
+    const barLine = bar ? (
+      <Text>
+        <Text color="green">{bar[0]}</Text>
+        <Text dimColor>{bar[1]}</Text>
+      </Text>
+    ) : (
+      rule
+    )
+    // How a line reads: the one being said highlighted, those already said dim, headings bold,
+    // the stand-ins for code and tables dim and slanted.
+    const lineStyle = (i: number, text: string) => ({
+      color: live === i ? 'green' : undefined,
+      bold: live === i || isLead(sentences, i),
+      dimColor: live !== i && ((live !== null && i < live) || isPlaceholder(text)),
+      italic: isPlaceholder(text),
+    })
 
-    // Header and footer keep their rows; the sentence list takes what is left and scrolls itself.
-    const listWidth = width - 4 // the » and ▸ columns
-    const rowsFor = (labels: number) => Math.ceil(labels / Math.max(1, width))
-    const headerRows = 3 + rowsFor(70)
-    const footerRows = 3 + rowsFor(185) + rowsFor(105)
+    const header = (
+      <Box flexDirection="column" flexShrink={0}>
+        <Box flexDirection="row" justifyContent="space-between">
+          <Box flexDirection="row" columnGap={1} flexShrink={1}>
+            <Button key="prev" hotkey="b" dimColor={at === 0} onPress={show(Math.max(0, at - 1))}>◀</Button>
+            <Text bold wrap="truncate-end">{details}</Text>
+            <Button key="next" hotkey="n" dimColor={isLatest} onPress={show(Math.min(list.length - 1, at + 1))}>▶</Button>
+            {!isLatest && <Button key="latest" plain dimColor onPress={show(list.length - 1)}>latest</Button>}
+          </Box>
+          {status && <Text color={status.color}>{status.text}</Text>}
+        </Box>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={remote ? 1 : 2} marginTop={remote ? 1 : 0}>
+          <Button key="all" variant="primary" hotkey="p" onPress={playAll}>▶ Play all</Button>
+          <Button key="pause" hotkey="a" onPress={pause}>{now.state === 'paused' ? '▶ Resume' : '❚❚ Pause'}</Button>
+          <Button key="skip" hotkey="x" onPress={skip}>⏭ Skip</Button>
+          <Button key="stop" hotkey="s" action={STOP_ACTION} onPress={stop}>■ Stop</Button>
+        </Box>
+        {barLine}
+      </Box>
+    )
+
+    // Header and footer keep their rows; the line list takes what is left and scrolls itself.
+    const listWidth = width - 2 // the ♪ column
+    const rowsFor = (chars: number) => Math.ceil(chars / Math.max(1, width))
+    const headerRows = 2 + rowsFor(50)
+    const footerRows = 2 + (panel === 'settings' ? rowsFor(230) + 1 : 0)
     const listRows = Math.max(1, height - headerRows - footerRows)
     const start = windowStart(sentences, await read($, top), live, listRows, listWidth)
     const shown = fitting(sentences, start, listRows, listWidth)
@@ -606,46 +700,29 @@ export const register: Register = on => {
     const page = Math.max(1, shown - 1)
 
     if (remote) {
-      // Native buttons here: small ▶ (this sentence) and » (from here) beside plain text, so
-      // the sentences read cleanly. The row estimate is in terminal rows, and these surfaces fit
-      // far more, so several times as many are drawn and the list's box clips what does not fit.
+      // Native buttons here: small ▶ (this line) and » (from here) beside plain text. The row
+      // estimate is in terminal rows, and these surfaces fit far more, so several times as many
+      // are drawn and the list's box clips what does not fit.
       const remotePage = Math.max(1, shown * 2 - 2) // about a screenful there, never past what was seen
       const drawn = sentences.slice(start, start + shown * REMOTE_ROWS + 4)
       const rows = drawn.map((s, k) => {
         const i = start + k
         return (
-        <Box key={`line${i}`} flexDirection="row" columnGap={1} marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
-          <Box flexDirection="row" columnGap={1} flexShrink={0}>
-            <Button key={`p${i}`} onPress={play(i)}>{live === i ? '♪' : '▶'}</Button>
-            <Button key={`f${i}`} onPress={playFrom(i)}>»</Button>
+          <Box key={`line${i}`} flexDirection="row" columnGap={1} marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0}>
+            <Box flexDirection="row" columnGap={1} flexShrink={0}>
+              <Button key={`p${i}`} onPress={play(i)}>{live === i ? '♪' : '▶'}</Button>
+              <Button key={`f${i}`} onPress={playFrom(i)}>»</Button>
+            </Box>
+            <Text {...lineStyle(i, s.text)}>{s.text}</Text>
           </Box>
-          <Text color={live === i ? 'green' : undefined} bold={live === i}>{s.text}</Text>
-        </Box>
         )
       })
 
       return (
         <Box flexDirection="column" paddingX={1} height={height}>
-          <Box flexDirection="column" flexShrink={0}>
-          <Box flexDirection="row" justifyContent="space-between" alignItems="center">
-            <Box flexDirection="row" columnGap={1} alignItems="center">
-              <Button key="prev" onPress={show(Math.max(0, at - 1))}>◀</Button>
-              <Text bold>Reply {at + 1} of {list.length}</Text>
-              <Button key="next" onPress={show(Math.min(list.length - 1, at + 1))}>▶</Button>
-              {!isLatest && <Button key="latest" onPress={show(list.length - 1)}>latest</Button>}
-            </Box>
-            <Text color={now.state === 'idle' ? undefined : 'green'} dimColor={now.state === 'idle'}>{status}</Text>
-          </Box>
-          <Box flexDirection="row" flexWrap="wrap" columnGap={1} marginTop={1}>
-            <Button key="all" variant="primary" onPress={playAll}>▶ Play all</Button>
-            <Button key="pause" onPress={pause}>{now.state === 'paused' ? '▶ Resume' : '❚❚ Pause'}</Button>
-            <Button key="skip" onPress={skip}>⏭ Skip</Button>
-            <Button key="stop" onPress={stop}>■ Stop</Button>
-            {historyButton}
-          </Box>
-          </Box>
+          {header}
           <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden" marginY={1}>
-            {rows}
+            {panel === 'help' ? helpList : rows}
           </Box>
           <Box flexDirection="column" flexShrink={0} rowGap={1}>
             <Box flexDirection="row" columnGap={1} alignItems="center">
@@ -653,80 +730,47 @@ export const register: Register = on => {
               <Button key="down" onPress={scrollTo(start + remotePage)}>▼</Button>
               <Text dimColor>from {start + 1} of {sentences.length}</Text>
             </Box>
-            {controls}
+            {footer}
           </Box>
         </Box>
       )
     }
 
+    const lines = sentences.slice(start, start + shown + 2).map((s, k) => {
+      // What fits by estimate, plus a little more that the clip hides when the estimate is low.
+      const i = start + k
+      return (
+        <Box key={`row${i}`} flexDirection="row" marginTop={k > 0 && sentences[i - 1]?.para !== s.para ? 1 : 0} flexShrink={0}>
+          <Box width={2} flexShrink={0}>
+            <Text color="green">{live === i ? '♪' : ' '}</Text>
+          </Box>
+          {/* Directly in the keyed row, as the pointer's own highlight expects. */}
+          <Box width={listWidth} flexShrink={0}>
+            <Button key={`s${i}`} plain onPress={playFrom(i)}>
+              <Text {...lineStyle(i, s.text)} wrap="wrap" hover={{ scope: `row${i}`, inverse: true }}>
+                {s.text}
+              </Text>
+            </Button>
+          </Box>
+        </Box>
+      )
+    })
+
     return (
       <Box flexDirection="column" paddingX={1} height={height}>
-        <Box flexDirection="column" flexShrink={0}>
-          <Box flexDirection="row" justifyContent="space-between">
-            <Box flexDirection="row" gap={1}>
-              <Button key="prev" plain hotkey="b" dimColor={at === 0} onPress={show(Math.max(0, at - 1))}>◀</Button>
-              <Text bold>
-                Reply {at + 1} of {list.length}
-              </Text>
-              <Button key="next" plain hotkey="n" dimColor={isLatest} onPress={show(Math.min(list.length - 1, at + 1))}>▶</Button>
-              {!isLatest && (
-                <Button key="latest" plain dimColor onPress={show(list.length - 1)}>latest</Button>
-              )}
-            </Box>
-            <Text color={now.state === 'idle' ? undefined : 'green'} dimColor={now.state === 'idle'}>{status}</Text>
-          </Box>
-          <Box flexDirection="row" flexWrap="wrap" columnGap={2} marginTop={1}>
-            <Button key="all" variant="primary" hotkey="p" onPress={playAll}>▶ Play all</Button>
-            <Button key="pause" hotkey="a" onPress={pause}>{now.state === 'paused' ? '▶ Resume' : '❚❚ Pause'}</Button>
-            <Button key="skip" hotkey="x" onPress={skip}>⏭ Skip</Button>
-            <Button key="stop" hotkey="s" action={STOP_ACTION} onPress={stop}>■ Stop</Button>
-            {historyButton}
-          </Box>
-          {rule}
-        </Box>
+        {header}
         <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
-          {/* What fits by estimate, plus a little more that the clip hides when the estimate is low. */}
-          {sentences.slice(start, start + shown + 2).map((s, k) => {
-            const i = start + k
-            const isLive = live === i
-            const gap = k > 0 && sentences[i - 1]?.para !== s.para
-
-            return (
-              <Box key={`row${i}`} flexDirection="row" marginTop={gap ? 1 : 0} flexShrink={0}>
-                {/* One hover group per row: pointing at any part lights all three. */}
-                <Box width={2} flexShrink={0}>
-                  <Button key={`f${i}`} plain onPress={playFrom(i)}>
-                    <Text dimColor hover={{ scope: `row${i}`, dimColor: false, bold: true }}>»</Text>
-                  </Button>
-                </Box>
-                <Box width={2} flexShrink={0}>
-                  <Button key={`p${i}`} plain onPress={play(i)}>
-                    <Text color={isLive ? 'green' : 'cyan'} hover={{ scope: `row${i}`, bold: true }}>
-                      {isLive ? '♪' : '▸'}
-                    </Text>
-                  </Button>
-                </Box>
-                {/* Directly in the keyed row, as the pointer's own highlight expects. */}
-                <Button key={`s${i}`} plain onPress={play(i)}>
-                  <Text color={isLive ? 'green' : undefined} bold={isLive} hover={{ scope: `row${i}`, inverse: true }}>
-                    {s.text}
-                  </Text>
-                </Button>
-              </Box>
-            )
-          })}
+          {panel === 'help' ? helpList : lines}
         </Box>
         <Box flexDirection="column" flexShrink={0}>
-          {rule}
-          <Box flexDirection="row" gap={2}>
-            <Button key="up" plain hotkey="k" dimColor={start === 0} onPress={scrollTo(start - page)}>▲</Button>
-            <Button key="down" plain hotkey="j" dimColor={start + shown >= sentences.length} onPress={scrollTo(start + page)}>▼</Button>
+          <Box flexDirection="row" columnGap={1}>
+            <Button key="up" hotkey="k" dimColor={start === 0} onPress={scrollTo(start - page)}>▲</Button>
+            <Button key="down" hotkey="j" dimColor={start + shown >= sentences.length} onPress={scrollTo(start + page)}>▼</Button>
             <Text dimColor>
               {start + 1}–{Math.min(sentences.length, start + shown)} of {sentences.length}
             </Text>
           </Box>
-          {controls}
-          <Text dimColor>» reads from that line on · b/n replies · j/k scroll · p play · a pause · x skip · s stop (ctrl+x s anywhere) · r history</Text>
+          {footer}
         </Box>
       </Box>
     )

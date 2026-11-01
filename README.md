@@ -98,8 +98,7 @@ To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disco
 
 | Key (in the pane) | Does |
 | --- | --- |
-| click a line | play that sentence |
-| `»` | read from that line to the end |
+| click a line | read from that line to the end |
 | `p` | play the whole reply |
 | `a` | pause or resume |
 | `x` | skip to the next sentence |
@@ -107,10 +106,8 @@ To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disco
 | `/mute [30m, until 3pm, off]` | mute for a while |
 | `b` / `n` | previous / next reply |
 | `j` / `k` | scroll the sentence list |
-| `r` | load every reply of this chat |
-| `v`, `m` | next voice, mute |
-| `u` | mute this session only (others still speak) |
-| `o` | next sound output (system default, then each device) |
+| `c` | settings; while open: `v` next voice, `o` next sound output, `m` mute, `u` mute this session only, `r` load every reply of this chat |
+| `h` | key help |
 
 Sending a message stops the current reply.
 

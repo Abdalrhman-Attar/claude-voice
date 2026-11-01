@@ -1,5 +1,5 @@
 export type Sentence = { text: string; para: number; line?: number }
-export type Reply = { id: string; sentences: Sentence[] }
+export type Reply = { id: string; sentences: Sentence[]; t?: number } // t: when it arrived, epoch ms
 export type SpeakSettings = {
   voice: string
   speed: number
@@ -13,10 +13,11 @@ export type SpeakSettings = {
   mutedSessions: string[] // sessions muted on their own, oldest first
   outputDevice: string // a sound output's name; '' is the system's default output
 }
+export type Panel = 'list' | 'settings' | 'help' // what the pane shows below its header
 export type Playback = { mine: boolean; ref: string | null; index: number | null; state: 'playing' | 'paused' | 'idle' }
 
 declare module 'claude-code' {
   interface PluginState {
-    'speak-pane': { replies: Reply[]; view: number; top: number; playback: Playback; prefs: SpeakSettings }
+    'speak-pane': { replies: Reply[]; view: number; top: number; playback: Playback; prefs: SpeakSettings; panel: Panel }
   }
 }

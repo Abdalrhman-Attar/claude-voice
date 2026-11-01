@@ -3,12 +3,16 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import {
+  ago,
   completeSentences,
   fitting,
+  isLead,
+  isPlaceholder,
   parseMute,
   parseStatus,
   pausesFor,
   permissionText,
+  progress,
   questionText,
   toSentences,
   windowStart,
@@ -230,7 +234,7 @@ test('every finished reply is recorded for the VS Code panel, muted or not', asy
   expect(host.records).toEqual([
     {
       mode: 'record',
-      reply: { id: 't1', sentences: [{ text: 'First.', para: 0, line: 0 }, { text: 'Second.', para: 0, line: 0 }] },
+      reply: { id: 't1', sentences: [{ text: 'First.', para: 0, line: 0 }, { text: 'Second.', para: 0, line: 0 }], t: NOW },
       session: 'sess',
       label: 'My Project',
       cwd: '/work/My Project',
@@ -276,15 +280,17 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await mount($)
 
     await tap(ui, surface, 's1')
-    await tap(ui, surface, 'p1')
-    await tap(ui, surface, 'f0')
+    await tap(ui, surface, surface === 'terminal' ? 's1' : 'p1')
+    await tap(ui, surface, surface === 'terminal' ? 's0' : 'f0')
     await tap(ui, surface, 'all')
     await tap(ui, surface, 'pause')
     await tap(ui, surface, 'skip')
     await tap(ui, surface, 'stop')
     expect(host.sent.map(({ session, label, ...r }) => r)).toEqual([
-      { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
-      { mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 },
+      // The terminal's line reads from there on; elsewhere its ▶ reads it alone.
+      ...(surface === 'terminal'
+        ? [1, 1].map(() => ({ mode: 'play', sentences: ['Second one!'], pauses: [0], ref: 't1', offset: 1 }))
+        : [1, 1].map(() => ({ mode: 'play', sentences: ['Second one!'], ref: 't1', offset: 1 }))),
       { mode: 'play', sentences: ['First one.', 'Second one!'], pauses: [0, 0], ref: 't1', offset: 0 },
       { mode: 'play', sentences: ['First one.', 'Second one!'], pauses: [0, 0], ref: 't1', offset: 0 },
       { mode: 'pause' },
@@ -298,6 +304,7 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'Hello.')
     const ui = await mount($)
 
+    await tap(ui, surface, 'settings')
     await tap(ui, surface, 'voice')
     await tap(ui, surface, 'faster')
     await tap(ui, surface, 'mute')
@@ -323,9 +330,9 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     await reply($, 'New reply.', 't2')
     const ui = await mount($)
 
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
+    expect((await ui.find({ type: 'Text', text: /^Reply \d+\/\d+/ }))?.text).toMatch(/^Reply 2\/2 /)
     await tap(ui, surface, 'prev', 0)
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 1 of 2')
+    expect((await ui.find({ type: 'Text', text: /^Reply \d+\/\d+/ }))?.text).toMatch(/^Reply 1\/2 /)
     await tap(ui, surface, 's0')
     expect(host.sent.map(r => r.sentences)).toEqual([['Old reply.']])
   })
@@ -335,7 +342,7 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
     const ui = await mount($)
 
     await tap(ui, surface, 'rebuild')
-    expect((await ui.find({ type: 'Text', text: /Reply \d+ of \d+/ }))?.text).toBe('Reply 2 of 2')
+    expect((await ui.find({ type: 'Text', text: /^Reply \d+\/\d+/ }))?.text).toMatch(/^Reply 2\/2 /)
     await tap(ui, surface, 's1')
     expect(host.sent.map(r => r.sentences)).toEqual([['More.']])
   })
@@ -427,6 +434,7 @@ test('mute this session stops its speech and keeps it quiet', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'speak-pane', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'speak' })
   host.sent.length = 0
 
+  await ui.press({ key: 'settings' })
   await ui.press({ key: 'muteSession' })
   expect(JSON.parse(host.files['/home/me/.claude/kokoro/settings.json'] ?? '{}').mutedSessions).toEqual(['older', 'sess'])
   expect(host.sent).toEqual([expect.objectContaining({ mode: 'stop', session: 'sess' })])
@@ -445,6 +453,50 @@ test('the output button goes through the default and each device', () => {
   expect(nextOutput(['Speakers'], 'Unplugged')).toBe('')
 })
 
+test('short paragraph openers are headings; code stand-ins are not', () => {
+  const s = toSentences('Several sessions speaking at once. The old extension has no lock.\n\nOne line alone.\n\n```sh\nls\n```\nThen more.')
+  expect(s.map((_, i) => isLead(s, i))).toEqual([true, false, false, false, false])
+  expect(isPlaceholder('Shell command.')).toBe(true)
+  expect(isPlaceholder('Python code, 2 lines.')).toBe(true)
+  expect(isPlaceholder('Table, 3 rows.')).toBe(true)
+  expect(isPlaceholder('Run the shell command.')).toBe(false)
+})
+
+test('ages and the progress bar', () => {
+  expect(ago(NOW - 20000, NOW)).toBe('just now')
+  expect(ago(NOW - 3 * 60000, NOW)).toBe('3m ago')
+  expect(ago(NOW - 5 * 3600000, NOW)).toBe('5h ago')
+  expect(progress(0, 4, 8)).toEqual(['━━', '──────'])
+  expect(progress(3, 4, 8)).toEqual(['━━━━━━━━', ''])
+})
+
+test('the header shows the reply, its age and size, and a mute', async ($, on) => {
+  fakeHost(on, { settings: { muted: true } })
+  await reply($, 'First. Second.')
+  await settle($)
+  const ui = await $.ui.mount({ plugin: 'speak-pane', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'speak' })
+
+  expect((await ui.find({ type: 'Text', text: /^Reply / }))?.text).toBe('Reply 1/1 · just now · 2 lines')
+  expect(await ui.find({ type: 'Text', text: '✕ muted' })).toBeDefined()
+})
+
+test('settings and key help fold away', async ($, on) => {
+  fakeHost(on, { settings: { muted: true } })
+  await reply($, 'First. Second.')
+  const ui = await $.ui.mount({ plugin: 'speak-pane', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'speak' })
+
+  expect(await ui.find({ key: 'voice' })).toBeUndefined()
+  await ui.press({ key: 'settings' })
+  expect(await ui.find({ key: 'voice' })).toBeDefined()
+  await ui.press({ key: 'settings' })
+  expect(await ui.find({ key: 'voice' })).toBeUndefined()
+  await ui.press({ key: 'help' })
+  expect(await ui.find({ type: 'Text', text: 'Keys' })).toBeDefined()
+  expect(await ui.find({ key: 's0' })).toBeUndefined()
+  await ui.press({ key: 'help' })
+  expect(await ui.find({ key: 's0' })).toBeDefined()
+})
+
 test('withSessionMuted keeps the newest fifty', () => {
   const many = Array.from({ length: 50 }, (_, i) => `s${i}`)
   expect(withSessionMuted(many, 'new', true)).toEqual([...many.slice(1), 'new'])
@@ -455,26 +507,26 @@ test('withSessionMuted keeps the newest fifty', () => {
 for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
   test(`list scrolls while controls stay drawn on ${surface}`, async ($, on) => {
     fakeHost(on, { settings: { muted: true } })
-    await reply($, Array.from({ length: 40 }, (_, i) => `Line ${i} here.`).join(' '))
+    await reply($, Array.from({ length: 80 }, (_, i) => `Line ${i} here.`).join(' '))
     const short = { ...PANE, scroll: { offset: 0, bodyRows: 24 } }
     const ui = await $.ui.mount({ plugin: 'speak-pane', surface, component: 'Pane', props: short, requestId: 'speak' })
 
     if (surface === 'terminal') {
       expect(await ui.find({ key: 's0' })).toBeDefined()
-      expect(await ui.find({ key: 's39' })).toBeUndefined()
+      expect(await ui.find({ key: 's79' })).toBeUndefined()
       await ui.press({ key: 'down' })
       expect(await ui.find({ key: 's0' })).toBeUndefined()
-      for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'voice', 'mute', 'prev']) {
+      for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'settings', 'help', 'prev']) {
         expect(await ui.find({ key })).toBeDefined()
       }
       return
     }
     // More rows than the terminal estimate are drawn (the list clips them), not all forty.
     expect(await ui.find({ key: 'p0' })).toBeDefined()
-    expect(await ui.find({ key: 'p39' })).toBeUndefined()
+    expect(await ui.find({ key: 'p79' })).toBeUndefined()
     await ui.press({ key: 'down' })
     expect(await ui.find({ key: 'p0' })).toBeUndefined()
-    for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'voice', 'mute', 'prev']) {
+    for (const key of ['all', 'pause', 'skip', 'stop', 'up', 'down', 'settings', 'help', 'prev']) {
       expect(await ui.find({ key })).toBeDefined()
     }
   })
