@@ -6,7 +6,7 @@
 # Code lives beside this file; data (venv, models, settings, status, log, socket) lives in
 # KOKORO_HOME, ~/.claude/kokoro by default.
 import json, os, re, signal, socket, sys, threading, time, queue, zlib
-import arabic as arabic_voice, magpie, mic, system_voice, transport
+import arabic as arabic_voice, devices, magpie, mic, system_voice, transport
 from transcripts import Watcher
 from collections import OrderedDict
 
@@ -37,6 +37,12 @@ def settings():
         return {**DEFAULTS, **json.load(open(SETTINGS))}
     except Exception:
         return dict(DEFAULTS)
+
+
+def muted_sessions(conf=None):
+    """Sessions muted on their own ("mutedSessions"), each still playable by hand."""
+    found = (conf or settings()).get("mutedSessions")
+    return set(found) if isinstance(found, list) else set()
 
 
 def voice_for(conf, label):
@@ -277,31 +283,57 @@ FADE_SECONDS = 0.012  # fade on pause, resume, skip and stop, so cuts do not cli
 BLOCK_SECONDS = 0.05  # audio is written in blocks this long
 LATENCY_SECONDS = 0.3  # device buffer: slack for the moments generation keeps Python busy
 WARM_SECONDS = 30  # the stream stays open, fed silence, this long after the last sound
+AUDIO_RATE = 48000  # sentences are kept at this rate; the stream plays them at the device's own
+DEVICE_POLL = 1.0  # seconds between looks at which device is the default output
 stream = None
-out_rate = None
+stream_device = None  # (chosen device name, macOS default output id) the stream was opened for
 out_lock = threading.RLock()  # one writer at a time: a job's player or the warm keeper
 last_sound = 0.0
 underruns = 0
 
 
-def device_rate():
+def refresh_devices():
+    """Makes PortAudio list the devices again: it reads them once, so a server started before the
+    headphones connected (at login) would keep playing on the speakers."""
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception as err:
+        log("audio devices:", err)
+
+
+def chosen_output():
+    """The device named by settings' "outputDevice", or None for the system's default output (also
+    when that device is not connected)."""
+    name = str(settings().get("outputDevice") or "")
+    if not name:
+        return None
+    try:
+        return devices.find(sd, name)
+    except Exception:
+        return None
+
+
+def device_rate(device=None):
     """The output device's own rate: audio is resampled to it so macOS never converts it."""
-    global out_rate
-    if out_rate is None:
-        try:
-            out_rate = int(sd.query_devices(kind="output")["default_samplerate"])
-        except Exception:
-            out_rate = 48000
-    return out_rate
+    try:
+        return int(sd.query_devices(device, kind="output" if device is None else None)["default_samplerate"])
+    except Exception:
+        return AUDIO_RATE
 
 
 def output():
     """The one output stream, kept open while speaking and a while after, so sound never stops
-    abruptly (some devices replay their last block when a stream stops or starves)."""
-    global stream
+    abruptly (some devices replay their last block when a stream stops or starves). Each new
+    stream goes to the default output as it is now."""
+    global stream, stream_device
     with out_lock:
         if stream is None:
-            stream = sd.OutputStream(samplerate=device_rate(), channels=1, dtype="float32", latency=LATENCY_SECONDS)
+            refresh_devices()
+            device = chosen_output()
+            stream_device = (str(settings().get("outputDevice") or ""), mic.output_device())
+            stream = sd.OutputStream(device=device, samplerate=device_rate(device), channels=1, dtype="float32",
+                                     latency=LATENCY_SECONDS)
         if not stream.active:
             stream.start()
             write(stream, np.zeros(int(LATENCY_SECONDS * stream.samplerate), dtype="float32"), quiet=True)  # prime
@@ -310,12 +342,10 @@ def output():
 
 def drop_output():
     """Forgets a stream the device broke (unplugged headphones, a new default output): the next
-    sound opens a fresh one at the new device's rate."""
-    global stream, out_rate
+    sound opens a fresh one on the default device, at its rate."""
+    global stream
     with out_lock:
-        old, stream, out_rate = stream, None, None
-    with model_lock:
-        cache.clear()  # made at the old device's rate
+        old, stream = stream, None
     try:
         if old is not None:
             old.close(ignore_errors=True)
@@ -323,9 +353,35 @@ def drop_output():
         pass
 
 
+def device_watch():
+    """Moves speech to the chosen output when the choice changes, and to a new default output
+    (headphones connected, AirPods taken out) as it happens; that second part is macOS only,
+    elsewhere the next stream after a rest goes to the new device."""
+    while True:
+        time.sleep(DEVICE_POLL)
+        try:
+            if stream is None or stream_device is None:
+                continue
+            chosen, default = stream_device
+            now = (str(settings().get("outputDevice") or ""), mic.output_device() if not chosen else default)
+            if now != stream_device:
+                log("output device changed")
+                drop_output()
+        except Exception as err:
+            log("device watch:", err)
+
+
+def at_rate(samples, rate):
+    """A sentence (at AUDIO_RATE) at the stream's rate."""
+    if rate == AUDIO_RATE or not len(samples):
+        return samples
+    n = int(round(len(samples) * rate / AUDIO_RATE))
+    return np.interp(np.arange(n) * (AUDIO_RATE / rate), np.arange(len(samples)), samples).astype("float32")
+
+
 def write(out, data, quiet=False):
     """Blocking write; `quiet` writes are filler that neither logs an underrun nor counts as sound.
-    False when the device failed, and the stream is dropped."""
+    False when the device failed (the stream is dropped) or the stream was replaced."""
     global underruns, last_sound
     with out_lock:
         if out is not stream:
@@ -356,6 +412,7 @@ def rest_output():
         if stream is not None and stream.active:
             write(stream, np.zeros(int((LATENCY_SECONDS + BLOCK_SECONDS) * stream.samplerate), dtype="float32"), quiet=True)
             stream.stop()
+        drop_output()  # the next reply opens the default output as it is then
 
 
 def keep_warm():
@@ -388,7 +445,7 @@ LIMIT = 0.92  # peaks above this are softly rounded off
 
 
 def master(samples, rate):
-    """Even loudness from sentence to sentence, a soft limiter, then the device's rate."""
+    """Even loudness from sentence to sentence, a soft limiter, then AUDIO_RATE."""
     x = samples.astype("float32")
     voiced = x[np.abs(x) > 0.01]
     if len(voiced):
@@ -397,10 +454,9 @@ def master(samples, rate):
     over = np.abs(x) > LIMIT
     if over.any():
         x[over] = np.sign(x[over]) * (LIMIT + (1 - LIMIT) * np.tanh((np.abs(x[over]) - LIMIT) / (1 - LIMIT)))
-    target = device_rate()
-    if rate != target:
-        n = int(round(len(x) * target / rate))
-        x = np.interp(np.arange(n) * (rate / target), np.arange(len(x)), x).astype("float32")
+    if rate != AUDIO_RATE:
+        n = int(round(len(x) * AUDIO_RATE / rate))
+        x = np.interp(np.arange(n) * (rate / AUDIO_RATE), np.arange(len(x)), x).astype("float32")
     return x
 
 
@@ -409,7 +465,7 @@ cache = OrderedDict()
 
 
 def synth(said, voice, speed, arabic=""):
-    """A sentence's audio at the device rate, from the cache when it was made before."""
+    """A sentence's audio at AUDIO_RATE, from the cache when it was made before."""
     key = (said, voice, speed, arabic)
     with model_lock:
         hit = cache.get(key)
@@ -567,17 +623,27 @@ class Job:
     def play_samples(self, samples):
         """Writes one sentence to the shared output stream in small blocks. Pausing fades to
         silence and keeps feeding silence (so the device never runs dry); resuming fades back in
-        from the same sample. Skip and stop fade out, then end."""
+        from the same sample. Skip and stop fade out, then end. When the output device changes
+        midway, the sentence goes on from the same point on the new one."""
         self.skipping = False
-        try:
-            out = output()
-        except Exception as err:
-            log("audio device error:", err)
-            drop_output()
-            return
+        played = 0.0  # share of the sentence already heard
+        for _ in range(3):  # the first device, then up to two new ones
+            try:
+                out = output()
+            except Exception as err:
+                log("audio device error:", err)
+                drop_output()
+                return
+            played = self.play_on(out, at_rate(samples, int(out.samplerate)), played)
+            if played is None:
+                return
+
+    def play_on(self, out, samples, played):
+        """Plays the sentence from `played` (a share of it); None once it ended, else the share
+        heard before the stream failed or was replaced."""
         rate = out.samplerate
-        pos = 0
-        gain = 1.0 if self.running.is_set() else 0.0
+        pos = int(played * len(samples))
+        gain = 0.0 if pos or not self.running.is_set() else 1.0  # a resumed sentence fades back in
         step = 1.0 / max(1, int(FADE_SECONDS * rate))
         block = int(BLOCK_SECONDS * rate)
         while True:
@@ -585,16 +651,16 @@ class Job:
             target = 0.0 if ending or not self.running.is_set() else 1.0
             if gain == 0.0 and target == 0.0:
                 if ending:
-                    return
+                    return None
                 if not write(out, np.zeros(block, dtype="float32")):  # paused: hold the position
-                    return
+                    return pos / max(1, len(samples))
                 continue
             if pos >= len(samples):
-                return
+                return None
             ramp = np.clip(gain + np.sign(target - gain) * step * np.arange(1, block + 1), 0.0, 1.0)
             chunk = samples[pos:pos + block]
             if not write(out, chunk * ramp[:len(chunk)]):
-                return  # the device failed: the next sentence opens it again
+                return pos / max(1, len(samples))  # the device failed or changed
             pos += len(chunk)
             gain = float(ramp[len(chunk) - 1])
 
@@ -617,7 +683,8 @@ class Job:
 
 # Requests: {"session", "label", "mode", "all", "ref", "offset", and "sentences" (with "pauses",
 # seconds of quiet before each) or "text"}.
-#   reply: queued behind other sessions' audio; replaces the same session's older reply.
+#   reply: queued behind other sessions' audio; replaces the same session's older reply. Dropped
+#          for a session in settings' "mutedSessions".
 #   play:  a person pressed play; cuts in now, other sessions' queued replies wait.
 #   stop:  silences one session (or every session with "all").
 #   pause: pauses the reply playing now, or resumes it.
@@ -691,6 +758,8 @@ def handle(req):
         elif mode == "skip":
             if current is not None and not current.done.is_set():
                 current.skip()
+        elif mode == "reply" and session and session in muted_sessions():
+            pass  # this session is muted; play (a person pressed it) still plays
         elif req.get("append") and append(req):
             pass
         elif req.get("urgent"):
@@ -893,6 +962,7 @@ if __name__ == "__main__":
         threading.Thread(target=worker, daemon=True).start()
         threading.Thread(target=keep_warm, daemon=True).start()
         threading.Thread(target=mic_watch, daemon=True).start()
+        threading.Thread(target=device_watch, daemon=True).start()
         Watcher(on_transcript_reply, on_title).start()
         last_active = time.time()
         while True:

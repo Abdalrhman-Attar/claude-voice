@@ -109,10 +109,14 @@ To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disco
 | `j` / `k` | scroll the sentence list |
 | `r` | load every reply of this chat |
 | `v`, `m` | next voice, mute |
+| `u` | mute this session only (others still speak) |
+| `o` | next sound output (system default, then each device) |
 
 Sending a message stops the current reply.
 
 Voice typing pauses it: while Claude Code's voice input, the system's dictation or a dictation app (Wispr Flow, superwhisper, MacWhisper, VoiceInk) records, the reply being read pauses and new ones wait; it goes on 1.5 seconds after you stop, unless you sent the message. Set `"pauseForMic"` in `~/.claude/kokoro/settings.json` to `"any"` to pause for every program that records, calls included, or `"off"`; the VS Code panel has it as **Pause while I dictate**. Seeing which program records needs macOS 14 or later, or Windows; on Linux only `"any"` works.
+
+Speech plays on the system's default output and follows it when it changes, such as when headphones connect (as it happens on macOS; elsewhere from the next reply). To always use one device, pick it with `o` or under **Output** in the VS Code panel (`"outputDevice"` in `~/.claude/kokoro/settings.json`, by name); while that device is not connected, the default output is used.
 
 ## Pronunciation
 

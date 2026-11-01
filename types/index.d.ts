@@ -10,6 +10,8 @@ export type SpeakSettings = {
   workUpdates: boolean // speak text between tool calls, not only the final reply
   projectVoices: boolean
   mutedUntil: number // epoch ms; a timed mute holds until then
+  mutedSessions: string[] // sessions muted on their own, oldest first
+  outputDevice: string // a sound output's name; '' is the system's default output
 }
 export type Playback = { mine: boolean; ref: string | null; index: number | null; state: 'playing' | 'paused' | 'idle' }
 

@@ -4,6 +4,7 @@
 #   tts.py [--session ID] [--label NAME] [--mode reply|play|stop|pause|skip] [--all]   text on stdin
 #   tts.py --check-away [BUNDLE_ID]   exit 0 when the terminal running us is not in front, 1 when it is
 #                                    (macOS: the app with that bundle id; elsewhere: our own window)
+#   tts.py --devices                 JSON list of the output devices' names, for "outputDevice"
 import argparse, json, os, subprocess, sys, time
 
 import transport
@@ -14,6 +15,7 @@ HOME = transport.HOME
 args = argparse.ArgumentParser()
 args.add_argument("--json", action="store_true")
 args.add_argument("--check-away", nargs="?", const="")
+args.add_argument("--devices", action="store_true")
 args.add_argument("--session", default="")
 args.add_argument("--label", default="")
 args.add_argument("--mode", choices=["reply", "play", "stop", "pause", "skip"], default="play")
@@ -86,6 +88,12 @@ def terminal_in_front(bundle):
     except Exception:
         return False
 
+
+if opts.devices:
+    import devices, sounddevice
+
+    print(json.dumps(devices.outputs(sounddevice)))
+    sys.exit(0)
 
 if opts.check_away is not None:
     sys.exit(1 if terminal_in_front(opts.check_away) else 0)

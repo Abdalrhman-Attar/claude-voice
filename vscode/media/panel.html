@@ -24,6 +24,7 @@
       <button class="action" id="pause" title="Pause or resume (space)" aria-label="Pause"><i class="codicon codicon-debug-pause"></i></button>
       <button class="action" id="skip" title="Skip to the next sentence" aria-label="Skip"><i class="codicon codicon-debug-step-over"></i></button>
       <button class="action" id="stop" title="Stop (esc)" aria-label="Stop"><i class="codicon codicon-debug-stop"></i></button>
+      <button class="action" id="muteSession" title="Mute this session" aria-label="Mute this session" aria-pressed="false"><i class="codicon codicon-mute"></i></button>
       <span id="state" class="state" aria-live="polite"></span>
     </div>
   </header>
@@ -70,6 +71,10 @@
         <div class="setting" id="arabicRow" hidden>
           <label for="arabicVoice">Arabic voice</label>
           <select id="arabicVoice"></select>
+        </div>
+        <div class="setting">
+          <label for="outputDevice">Output</label>
+          <select id="outputDevice"></select>
         </div>
         <div class="setting">
           <label for="speed">Speed</label>

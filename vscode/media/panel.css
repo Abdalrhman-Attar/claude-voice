@@ -36,6 +36,7 @@ button { font: inherit; color: inherit; }
 .action:active { background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }
 .action:disabled { opacity: 0.4; cursor: default; background: transparent; }
 .action .codicon { font-size: 16px; }
+.action.on { color: var(--vscode-errorForeground); background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }
 .action.primary {
   padding: 0 8px 0 5px;
   color: var(--vscode-button-foreground);

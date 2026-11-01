@@ -17,6 +17,8 @@ import {
   toSentences,
   untilText,
   windowStart,
+  nextOutput,
+  withSessionMuted,
 } from './sentences'
 
 const PANE = 'speak'
@@ -126,9 +128,14 @@ async function summarize($: EngineInterface, answer: string): Promise<string | n
   return r?.isAnswered && r.text.trim() ? r.text.trim() : null
 }
 
+// Whether this session is muted on its own (the pane's "mute this session").
+async function sessionMuted($: EngineInterface, conf: SpeakSettings): Promise<boolean> {
+  return conf.mutedSessions.includes(await $.session.id())
+}
+
 // Whether auto-speak should talk now: not muted, and away from the terminal when that is asked.
 async function shouldSpeak($: EngineInterface, conf: SpeakSettings): Promise<boolean> {
-  if (isMuted(conf, await $.clock.now())) {
+  if (isMuted(conf, await $.clock.now()) || (await sessionMuted($, conf))) {
     return false
   }
 
@@ -148,7 +155,7 @@ async function isAway($: EngineInterface): Promise<boolean> {
 // when not muted and the person is away from the terminal; at the terminal they can see it.
 async function alert($: EngineInterface, sentences: string[]) {
   const conf = await loadSettings($)
-  if (sentences.length === 0 || isMuted(conf, await $.clock.now()) || !(await isAway($))) {
+  if (sentences.length === 0 || isMuted(conf, await $.clock.now()) || (await sessionMuted($, conf)) || !(await isAway($))) {
     return
   }
   await send($, { mode: 'reply', urgent: true, sentences, ref: null })
@@ -463,6 +470,21 @@ export const register: Register = on => {
     const nextVoice = async () => {
       await saveSettings($, { voice: VOICES[(VOICES.indexOf(conf.voice) + 1) % VOICES.length] ?? 'af_heart' })
     }
+    // The devices are listed each press: headphones come and go.
+    const nextDevice = async () => {
+      const p = await paths($)
+      const { exitCode, stdout } = await $.process.run([p.python, p.tts, '--devices'], { timeoutMs: 15000 })
+      let devices: string[] = []
+      try {
+        const parsed: unknown = JSON.parse(stdout)
+        devices = Array.isArray(parsed) ? parsed.filter((d): d is string => typeof d === 'string') : []
+      } catch {
+        // none listed: only the default is offered
+      }
+      if (exitCode === 0) {
+        await saveSettings($, { outputDevice: nextOutput(devices, conf.outputDevice) })
+      }
+    }
     const speed = (delta: number) => async () => {
       await saveSettings($, { speed: Math.round(Math.min(1.6, Math.max(0.7, conf.speed + delta)) * 10) / 10 })
     }
@@ -475,12 +497,27 @@ export const register: Register = on => {
       await saveSettings($, muted ? { muted: false, mutedUntil: 0 } : { muted: true })
     }
     const muteLabel = !muted ? '♪ auto-speak' : conf.muted ? '✕ muted' : `✕ muted until ${untilText(conf.mutedUntil, clock)}`
+    const me = await $.session.id()
+    const thisMuted = conf.mutedSessions.includes(me)
+    const toggleSessionMute = async () => {
+      await saveSettings($, { mutedSessions: withSessionMuted(conf.mutedSessions, me, !thisMuted) })
+      if (!thisMuted) {
+        for (const live of liveTurns.values()) {
+          live.speak = Promise.resolve(false)
+        }
+        await send($, { mode: 'stop' })
+      }
+    }
 
     const controls = (
       <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
         <Button key="voice" plain hotkey="v" onPress={nextVoice}>
           <Text dimColor>voice </Text>
           <Text color="cyan">{conf.projectVoices ? 'per project' : conf.voice}</Text>
+        </Button>
+        <Button key="output" plain hotkey="o" onPress={nextDevice}>
+          <Text dimColor>output </Text>
+          <Text color="cyan">{conf.outputDevice || 'system default'}</Text>
         </Button>
         <Box flexDirection="row">
           <Text dimColor>speed </Text>
@@ -490,6 +527,9 @@ export const register: Register = on => {
         </Box>
         <Button key="mute" plain hotkey="m" onPress={toggleMute}>
           <Text color={muted ? 'red' : 'green'}>{muteLabel}</Text>
+        </Button>
+        <Button key="muteSession" plain hotkey="u" onPress={toggleSessionMute}>
+          <Text color={thisMuted ? 'red' : undefined} dimColor={!thisMuted}>{thisMuted ? '☑' : '☐'} mute this session</Text>
         </Button>
         <Button key="away" plain onPress={toggle('awayOnly')}>
           <Text dimColor={!conf.awayOnly}>{conf.awayOnly ? '☑' : '☐'} only when away</Text>

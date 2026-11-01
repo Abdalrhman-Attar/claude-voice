@@ -12,6 +12,8 @@ import {
   questionText,
   toSentences,
   windowStart,
+  nextOutput,
+  withSessionMuted,
 } from '../hooks/sentences'
 
 const texts = (answer: string) => toSentences(answer).map(s => s.text)
@@ -310,6 +312,8 @@ for (const surface of ['terminal', 'desktop', 'vscode'] as const) {
       workUpdates: true,
       projectVoices: false,
       mutedUntil: 0,
+      mutedSessions: [],
+      outputDevice: '',
     })
   })
 
@@ -414,6 +418,38 @@ test('muted streams nothing', async ($, on) => {
   await settle($)
 
   expect(host.sent).toEqual([])
+})
+
+test('mute this session stops its speech and keeps it quiet', async ($, on) => {
+  const host = fakeHost(on, { settings: { mutedSessions: ['older'] } })
+  await reply($, 'First.', 't1')
+  await settle($)
+  const ui = await $.ui.mount({ plugin: 'speak-pane', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'speak' })
+  host.sent.length = 0
+
+  await ui.press({ key: 'muteSession' })
+  expect(JSON.parse(host.files['/home/me/.claude/kokoro/settings.json'] ?? '{}').mutedSessions).toEqual(['older', 'sess'])
+  expect(host.sent).toEqual([expect.objectContaining({ mode: 'stop', session: 'sess' })])
+  await reply($, 'Second.', 't2')
+  await settle($)
+  expect(host.sent.length).toBe(1)
+
+  await ui.press({ key: 'muteSession' })
+  expect(JSON.parse(host.files['/home/me/.claude/kokoro/settings.json'] ?? '{}').mutedSessions).toEqual(['older'])
+})
+
+test('the output button goes through the default and each device', () => {
+  expect(nextOutput(['Speakers', 'Headphones'], '')).toBe('Speakers')
+  expect(nextOutput(['Speakers', 'Headphones'], 'Speakers')).toBe('Headphones')
+  expect(nextOutput(['Speakers', 'Headphones'], 'Headphones')).toBe('')
+  expect(nextOutput(['Speakers'], 'Unplugged')).toBe('')
+})
+
+test('withSessionMuted keeps the newest fifty', () => {
+  const many = Array.from({ length: 50 }, (_, i) => `s${i}`)
+  expect(withSessionMuted(many, 'new', true)).toEqual([...many.slice(1), 'new'])
+  expect(withSessionMuted(['a', 'b'], 'a', false)).toEqual(['b'])
+  expect(withSessionMuted(['a', 'b'], 'a', true)).toEqual(['b', 'a'])
 })
 
 for (const surface of ['terminal', 'desktop', 'vscode'] as const) {

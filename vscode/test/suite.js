@@ -103,6 +103,17 @@ exports.run = async function () {
     await vscode.commands.executeCommand('claudeVoice.toggleMute')
     assert.strictEqual(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).muted === true, !before)
   })
+  await step('mutes and unmutes one session', async () => {
+    const muted = () => JSON.parse(fs.readFileSync(settingsFile, 'utf8')).mutedSessions || []
+    api.panelMessage({ type: 'muteSession', session: 'suite-session', value: true })
+    assert.ok(muted().includes('suite-session'))
+    api.panelMessage({ type: 'muteSession', session: 'suite-session', value: false })
+    assert.ok(!muted().includes('suite-session'))
+  })
+  await step('lists the sound outputs', async () => {
+    await api.panelMessage({ type: 'devices' })
+    assert.ok(api.devices().length > 0)
+  })
 
   fs.writeFileSync(settingsFile, savedSettings)
   fs.writeFileSync(path.join(__dirname, 'results.txt'), results.join('\n') + '\n')

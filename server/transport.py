@@ -48,13 +48,30 @@ def single():
     _lock = f
 
 
+def retire_unlocked():
+    """Asks a server that answers without holding the lock (a copy from before the lock, such as
+    an old VS Code extension's) to quit, and waits for it: two servers would speak every reply."""
+    try:
+        send({"mode": "quit"})
+    except NotRunning:
+        return
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            connect()[0].close()
+        except NotRunning:
+            return
+        time.sleep(0.2)
+
+
 def listen():
     """The server's listening socket, or SystemExit when another server is running."""
     single()
+    retire_unlocked()
     if USE_UNIX:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            os.unlink(SOCK)  # left by a server that died: we hold the lock, so it is not live
+            os.unlink(SOCK)  # left by a server that died, or by the old one retired above
         except FileNotFoundError:
             pass
         s.bind(SOCK)

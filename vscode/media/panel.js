@@ -267,6 +267,28 @@
     const known = groups.flatMap(([, voices]) => voices.map(([v]) => v))
     arabic.value = known.includes(c.arabicVoice) ? c.arabicVoice : known[0] || ''
     $('arabicRow').hidden = groups.length === 0
+    const output = $('outputDevice')
+    const chosen = typeof c.outputDevice === 'string' ? c.outputDevice : ''
+    const devices = ['', ...(state.devices || [])]
+    if (chosen && !devices.includes(chosen)) devices.push(chosen) // chosen but not connected now
+    if (output.dataset.shape !== devices.join('\u0000')) {
+      output.replaceChildren(
+        ...devices.map(d => {
+          const o = document.createElement('option')
+          o.value = d
+          o.textContent = d === '' ? 'System default' : (state.devices || []).includes(d) ? d : `${d} (not connected)`
+          return o
+        }),
+      )
+      output.dataset.shape = devices.join('\u0000')
+    }
+    output.value = chosen
+    const muted = (Array.isArray(c.mutedSessions) ? c.mutedSessions : []).includes(sessionId())
+    const muteButton = $('muteSession')
+    muteButton.disabled = !sessionId()
+    muteButton.setAttribute('aria-pressed', String(muted))
+    muteButton.classList.toggle('on', muted)
+    muteButton.title = muted ? 'This session is muted: click to hear it again' : 'Mute this session'
     voice.disabled = c.projectVoices === true
     voice.title = c.projectVoices === true ? 'Each project has its own voice (Sessions)' : ''
     const speed = typeof c.speed === 'number' ? c.speed : 1.1
@@ -391,6 +413,7 @@
   for (const group of document.querySelectorAll('.group')) {
     group.querySelector('.group-head').addEventListener('click', () => {
       open = { ...open, [group.dataset.group]: !open[group.dataset.group] }
+      if (open[group.dataset.group] && group.dataset.group === 'voice') vscode.postMessage({ type: 'devices' })
       save()
       renderSettings()
     })
@@ -399,6 +422,14 @@
   const setting = (k, value) => vscode.postMessage({ type: 'setting', key: k, value })
   $('voice').addEventListener('change', e => setting('voice', e.target.value))
   $('arabicVoice').addEventListener('change', e => setting('arabicVoice', e.target.value))
+  $('outputDevice').addEventListener('change', e => setting('outputDevice', e.target.value))
+  // Devices come and go (headphones, AirPods): listed again whenever the list is opened.
+  $('outputDevice').addEventListener('focus', () => vscode.postMessage({ type: 'devices' }))
+  $('muteSession').addEventListener('click', () => {
+    const session = sessionId()
+    const muted = (Array.isArray(state.settings.mutedSessions) ? state.settings.mutedSessions : []).includes(session)
+    if (session) vscode.postMessage({ type: 'muteSession', session, value: !muted })
+  })
   $('speed').addEventListener('input', e => ($('speedOut').textContent = `${Number(e.target.value).toFixed(1)}×`))
   $('speed').addEventListener('change', e => setting('speed', Math.round(Number(e.target.value) * 10) / 10))
   $('autoSpeak').addEventListener('change', e => setting('muted', !e.target.checked))

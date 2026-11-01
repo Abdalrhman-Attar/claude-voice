@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS: SpeakSettings = {
   workUpdates: true,
   projectVoices: false,
   mutedUntil: 0,
+  mutedSessions: [],
+  outputDevice: '',
 }
 export const IDLE: Playback = { mine: false, ref: null, index: null, state: 'idle' }
 
@@ -197,7 +199,27 @@ export function parseSettings(raw: string | undefined): SpeakSettings {
     workUpdates: typeof v.workUpdates === 'boolean' ? v.workUpdates : d.workUpdates,
     projectVoices: typeof v.projectVoices === 'boolean' ? v.projectVoices : d.projectVoices,
     mutedUntil: typeof v.mutedUntil === 'number' ? v.mutedUntil : d.mutedUntil,
+    mutedSessions: Array.isArray(v.mutedSessions)
+      ? v.mutedSessions.filter((s): s is string => typeof s === 'string')
+      : d.mutedSessions,
+    outputDevice: typeof v.outputDevice === 'string' ? v.outputDevice : d.outputDevice,
   }
+}
+
+const MUTED_SESSIONS_KEPT = 50
+
+// The output after `current` in the order offered: the system's default (''), then each device.
+export function nextOutput(devices: string[], current: string): string {
+  const all = ['', ...devices.filter(d => d !== '')]
+
+  return all[(all.indexOf(current) + 1) % all.length] ?? ''
+}
+
+// The muted sessions with `session` muted or unmuted; the oldest are forgotten past a limit.
+export function withSessionMuted(list: string[], session: string, muted: boolean): string[] {
+  const rest = list.filter(s => s !== session)
+
+  return (muted ? [...rest, session] : rest).slice(-MUTED_SESSIONS_KEPT)
 }
 
 // status.json as the server writes it, seen from session `me`.

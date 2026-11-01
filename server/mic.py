@@ -5,6 +5,7 @@
 #              macOS: whether the default input device is running at all.
 #   Windows:   an app holding the microphone has a capability record with no stop time yet.
 #   Linux:     an ALSA capture stream is running (PipeWire and PulseAudio open one while recording).
+# Also, on macOS, which device is the default output, so speech follows headphones as they connect.
 import glob, os, re, subprocess, sys
 
 # Programs that record only to turn speech into typing (matched against the program's name or path).
@@ -121,6 +122,20 @@ def linux_active(which):
 
 
 _mac = None
+
+
+def output_device():
+    """macOS: the default output device's id (it changes when headphones connect); None elsewhere."""
+    global _mac
+    if sys.platform != "darwin":
+        return None
+    try:
+        if _mac is None:
+            _mac = MacMic()
+        device = _mac.get(1, "dOut", _mac.c.c_uint32)  # kAudioHardwarePropertyDefaultOutputDevice
+        return device[0] if device else None
+    except Exception:
+        return None
 
 
 def active(which="dictation"):

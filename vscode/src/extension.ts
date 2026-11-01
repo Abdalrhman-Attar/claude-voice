@@ -129,6 +129,29 @@ class Voice {
     })
   }
 
+  // The sound outputs by name, listed by tts.py in a fresh process (the server's own list is
+  // read once and kept); empty when the voice is not set up.
+  devices(): Promise<string[]> {
+    return new Promise(resolve => {
+      if (!this.ready()) return resolve([])
+      let out = ''
+      const child = spawn(python(), [path.join(this.server, 'tts.py'), '--devices'], {
+        env: { ...process.env, KOKORO_HOME: home() },
+        windowsHide: true,
+      })
+      child.stdout.on('data', d => (out += d))
+      child.on('error', () => resolve([]))
+      child.on('exit', () => {
+        try {
+          const list: unknown = JSON.parse(out)
+          resolve(Array.isArray(list) ? list.filter((d): d is string => typeof d === 'string') : [])
+        } catch {
+          resolve([])
+        }
+      })
+    })
+  }
+
   play(reply: Reply, index: number, onlyThis: boolean) {
     const sentences = onlyThis ? reply.sentences.slice(index, index + 1) : reply.sentences.slice(index)
     return this.send({
@@ -209,6 +232,7 @@ class RepliesView implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView
   panelReady = false // the panel's script ran and asked for state
   setup: SetupState = { running: false, step: 0, detail: '', log: [] }
+  devices: string[] = []
   onSetup?: () => void
   onPlugin?: () => void
 
@@ -249,8 +273,22 @@ class RepliesView implements vscode.WebviewViewProvider {
       ready: this.voice.ready(),
       plugin: pluginInstalled(),
       ...arabicVoices(),
+      devices: this.devices,
       setup: this.setup,
     })
+  }
+
+  async listDevices() {
+    this.devices = await this.voice.devices()
+    this.push()
+  }
+
+  // Mutes or unmutes one session; muting also stops what it is saying.
+  muteSession(session: string, muted: boolean) {
+    const list = this.store.settings.mutedSessions
+    const rest = (Array.isArray(list) ? list : []).filter(s => s !== session)
+    this.store.saveSettings({ mutedSessions: (muted ? [...rest, session] : rest).slice(-50) })
+    if (muted) void this.voice.send({ mode: 'stop', session })
   }
 
   receive(msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) {
@@ -258,7 +296,12 @@ class RepliesView implements vscode.WebviewViewProvider {
     switch (msg.type) {
       case 'ready':
         this.panelReady = true
+        void this.listDevices()
         return this.push()
+      case 'devices':
+        return this.listDevices()
+      case 'muteSession':
+        return msg.session && this.muteSession(msg.session, msg.value === true)
       case 'play':
         return reply && this.voice.play(reply, msg.index ?? 0, false)
       case 'playOne':
@@ -308,6 +351,7 @@ export type Api = {
   visible: () => number
   latest: (minSentences?: number) => Reply | undefined
   panelMessage: (msg: { type: string; id?: string; session?: string; index?: number; key?: string; value?: unknown }) => unknown
+  devices: () => string[]
 }
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -455,6 +499,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     visible: () => store.visibleReplies().length,
     latest: (min = 0) => store.visibleReplies().filter(r => r.sentences.length >= min).at(-1),
     panelMessage: msg => view.receive(msg),
+    devices: () => view.devices,
   }
 }
 
