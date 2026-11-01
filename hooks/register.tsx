@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Panel, Playback, Reply, SpeakSettings } from '../types'
 import {
@@ -525,45 +525,65 @@ export const register: Register = on => {
       await update($, panelAtom, current => (current === p ? 'list' : p))
     }
 
-    // Everything the settings hold, shown when ⚙ is open; folded, one summary row stands in.
-    const settingsRows = (
-      <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-        <Button key="voice" plain hotkey="v" onPress={nextVoice}>
-          <Text dimColor>voice </Text>
-          <Text color="cyan">{conf.projectVoices ? 'per project' : conf.voice}</Text>
-        </Button>
-        <Button key="output" plain hotkey="o" onPress={nextDevice}>
-          <Text dimColor>output </Text>
-          <Text color="cyan">{conf.outputDevice || 'system default'}</Text>
-        </Button>
-        <Box flexDirection="row">
-          <Text dimColor>speed </Text>
-          <Button key="slower" plain onPress={speed(-0.1)}>−</Button>
-          <Text color="cyan"> {conf.speed.toFixed(1)}× </Text>
-          <Button key="faster" plain onPress={speed(0.1)}>+</Button>
+    // Everything the settings hold, shown when ⚙ is open, one labelled row per kind; folded, one
+    // summary row stands in. No hotkeys here: a hotkey draws its letter beside the control.
+    const check = (checked: boolean, label: string) => (
+      <Text dimColor={!checked}>
+        <Text color={checked ? 'green' : undefined}>{checked ? '☑' : '☐'}</Text> {label}
+      </Text>
+    )
+    const settingRow = (label: string, children: RenderChildren) => (
+      <Box key={`set${label}`} flexDirection="row">
+        <Box width={9} flexShrink={0}>
+          <Text dimColor>{label}</Text>
         </Box>
-        <Button key="mute" plain hotkey="m" onPress={toggleMute}>
-          <Text color={muted ? 'red' : 'green'}>{muteLabel}</Text>
-        </Button>
-        <Button key="muteSession" plain hotkey="u" onPress={toggleSessionMute}>
-          <Text color={thisMuted ? 'red' : undefined} dimColor={!thisMuted}>{thisMuted ? '☑' : '☐'} mute this session</Text>
-        </Button>
-        <Button key="away" plain onPress={toggle('awayOnly')}>
-          <Text dimColor={!conf.awayOnly}>{conf.awayOnly ? '☑' : '☐'} only when away</Text>
-        </Button>
-        <Button key="live" plain onPress={toggle('live')}>
-          <Text dimColor={!conf.live}>{conf.live ? '☑' : '☐'} speak while typing</Text>
-        </Button>
-        <Button key="workUpdates" plain onPress={toggle('workUpdates')}>
-          <Text dimColor={!conf.workUpdates}>{conf.workUpdates ? '☑' : '☐'} speak work updates</Text>
-        </Button>
-        <Button key="projectVoices" plain onPress={toggle('projectVoices')}>
-          <Text dimColor={!conf.projectVoices}>{conf.projectVoices ? '☑' : '☐'} own voice per project</Text>
-        </Button>
-        <Button key="summary" plain onPress={toggle('summarize')}>
-          <Text dimColor={!conf.summarize || conf.live}>{conf.summarize ? '☑' : '☐'} summarize long{conf.live ? ' (when not live)' : ''}</Text>
-        </Button>
-        {reply && <Button key="rebuild" plain hotkey="r" onPress={rebuild}>⟳ load chat history</Button>}
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3} flexShrink={1}>
+          {children}
+        </Box>
+      </Box>
+    )
+    const settingsRows = (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold>Settings</Text>
+        {settingRow('Voice', [
+          <Button key="voice" plain onPress={nextVoice}>
+            <Text color="cyan">{conf.projectVoices ? 'per project' : conf.voice}</Text>
+            <Text dimColor> ›</Text>
+          </Button>,
+          <Box key="speedBox" flexDirection="row">
+            <Text dimColor>speed </Text>
+            <Button key="slower" plain onPress={speed(-0.1)}>−</Button>
+            <Text color="cyan"> {conf.speed.toFixed(1)}× </Text>
+            <Button key="faster" plain onPress={speed(0.1)}>+</Button>
+          </Box>,
+        ])}
+        {settingRow('Output', [
+          <Button key="output" plain onPress={nextDevice}>
+            <Text color="cyan">{conf.outputDevice || 'system default'}</Text>
+            <Text dimColor> ›</Text>
+          </Button>,
+        ])}
+        {settingRow('Speak', [
+          <Button key="live" plain onPress={toggle('live')}>{check(conf.live, 'while typing')}</Button>,
+          <Button key="workUpdates" plain onPress={toggle('workUpdates')}>{check(conf.workUpdates, 'work updates')}</Button>,
+          <Button key="away" plain onPress={toggle('awayOnly')}>{check(conf.awayOnly, 'only when away')}</Button>,
+          <Button key="summary" plain onPress={toggle('summarize')}>
+            {check(conf.summarize, conf.live ? 'summarize long (when not live)' : 'summarize long')}
+          </Button>,
+          <Button key="projectVoices" plain onPress={toggle('projectVoices')}>{check(conf.projectVoices, 'own voice per project')}</Button>,
+        ])}
+        {settingRow('Mute', [
+          <Button key="mute" plain onPress={toggleMute}>
+            <Text color={muted ? 'red' : 'green'}>{muteLabel}</Text>
+          </Button>,
+          <Button key="muteSession" plain onPress={toggleSessionMute}>{check(thisMuted, 'this session only')}</Button>,
+        ])}
+        {reply &&
+          settingRow('History', [
+            <Button key="rebuild" plain onPress={rebuild}>
+              <Text color="cyan">⟳ load this chat's replies</Text>
+            </Button>,
+          ])}
       </Box>
     )
     const summaryText = [
@@ -582,7 +602,7 @@ export const register: Register = on => {
         <Box flexDirection="row" columnGap={1} justifyContent="space-between">
           <Box flexDirection="row" columnGap={1} flexShrink={1}>
             {settingsButton}
-            <Text dimColor wrap="truncate-end">{summaryText}</Text>
+            {panel !== 'settings' && <Text dimColor wrap="truncate-end">{summaryText}</Text>}
           </Box>
           {helpButton}
         </Box>
@@ -594,7 +614,7 @@ export const register: Register = on => {
       ['ctrl+x s, /hush', 'stop from anywhere'],
       ['b · n', 'previous · next reply'],
       ['j · k', 'scroll the lines'],
-      ['c', 'settings: then v voice, o output, m mute, u mute this session, r load chat history'],
+      ['c', 'settings: voice, speed, output, when to speak, mute, chat history'],
       ['/mute 30m', 'mute for a while (/mute off)'],
       ['h', 'this help'],
     ]
@@ -690,7 +710,7 @@ export const register: Register = on => {
     const listWidth = width - 2 // the ♪ column
     const rowsFor = (chars: number) => Math.ceil(chars / Math.max(1, width))
     const headerRows = 2 + rowsFor(50)
-    const footerRows = 2 + (panel === 'settings' ? rowsFor(230) + 1 : 0)
+    const footerRows = 2 + (panel === 'settings' ? 6 + rowsFor(110) + (reply ? 1 : 0) + 1 : 0)
     const listRows = Math.max(1, height - headerRows - footerRows)
     const start = windowStart(sentences, await read($, top), live, listRows, listWidth)
     const shown = fitting(sentences, start, listRows, listWidth)

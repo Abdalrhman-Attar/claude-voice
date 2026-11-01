@@ -106,7 +106,7 @@ To disconnect: `~/.claude/kokoro/.venv/bin/python server/install_helper.py disco
 | `/mute [30m, until 3pm, off]` | mute for a while |
 | `b` / `n` | previous / next reply |
 | `j` / `k` | scroll the sentence list |
-| `c` | settings; while open: `v` next voice, `o` next sound output, `m` mute, `u` mute this session only, `r` load every reply of this chat |
+| `c` | settings: voice and speed, sound output, when to speak, mute (all or this session), load this chat's replies |
 | `h` | key help |
 
 Sending a message stops the current reply.
