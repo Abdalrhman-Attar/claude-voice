@@ -62,6 +62,10 @@ type Request = {
 // Turns being read aloud while they stream: whether to speak them, and what was sent.
 type LiveTurn = { speak: Promise<boolean>; lastStep: number; sent: Promise<void>; workUpdates: boolean }
 const liveTurns = new Map<string, LiveTurn>()
+// Turns this process saw begin. Only these are spoken: opening or resuming a session can hand
+// over turns that ended earlier, and those are listed in the pane but not read out.
+const startedTurns = new Set<string>()
+const STARTED_KEPT = 50
 
 type Paths = { python: string; tts: string; history: string; settings: string; status: string }
 
@@ -328,8 +332,28 @@ export const register: Register = on => {
   })
 
   // Speaks the reply while it is typed: each finished sentence goes to the server as it arrives.
+  on('turn.start', async ($, e, next) => {
+    startedTurns.add(e.turnId)
+    for (const old of [...startedTurns].slice(0, -STARTED_KEPT)) {
+      startedTurns.delete(old)
+    }
+
+    return next(e)
+  })
+
+  // Leaving the session (/exit, ctrl+c, /clear, another resumed in its place) stops what it is
+  // saying and drops its replies still waiting; other sessions go on.
+  on('session.end', async ($, e, next) => {
+    for (const live of liveTurns.values()) {
+      live.speak = Promise.resolve(false)
+    }
+    await send($, { mode: 'stop' }).catch(() => undefined)
+
+    return next(e)
+  })
+
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId) {
+    if (e.agentId || !startedTurns.has(e.turnId)) {
       return yield* next(e)
     }
     let live = liveTurns.get(e.turnId)
@@ -384,7 +408,9 @@ export const register: Register = on => {
       void send($, { mode: 'record', reply }).catch(() => undefined) // for the VS Code extension's panel
       await update($, view, () => all.length - 1)
       await update($, top, () => 0)
-      if (!isLive) {
+      if (!startedTurns.has(e.turnId)) {
+        // an earlier turn handed over as the session opened: listed, not spoken
+      } else if (!isLive) {
         void autoSpeak($, reply, e.answer, e.durationMs)
       } else if (await live.speak) {
         void sayDone($, reply.id, reply.sentences.length, e.durationMs).catch(() => undefined)

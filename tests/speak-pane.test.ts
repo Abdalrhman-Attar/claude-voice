@@ -60,6 +60,8 @@ function fakeHost(on: On, { history = [] as string[], settings = {}, inFront = f
     summaries: 0,
   }
   on('turn.complete', () => ({ text: '' }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
   on('telemetry.mark', () => ({ value: undefined }))
   on('session.id', () => ({ value: 'sess' }))
   on('clock.now', () => ({ value: NOW }))
@@ -95,8 +97,11 @@ function fakeHost(on: On, { history = [] as string[], settings = {}, inFront = f
   return host
 }
 
-const reply = ($: Engine, answer: string, turnId = 't1', agentId?: string) =>
-  $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId, reason: 'answer', agentId })
+// A turn that begins and ends in this session, as the person's prompt starts one.
+const reply = async ($: Engine, answer: string, turnId = 't1', agentId?: string) => {
+  await $.turn.start({ text: '', turnId })
+  return $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId, reason: 'answer', agentId })
+}
 
 // Auto-speak runs after the turn without holding it; let its engine calls settle.
 async function settle($: Engine) {
@@ -385,6 +390,7 @@ function fakeStream(on: On, pieces: string[], stopReason: 'end_turn' | 'tool_use
 }
 
 const step = async ($: Engine, turnId: string, index = 0) => {
+  await $.turn.start({ text: '', turnId })
   for await (const _ of $.turn.step({ turnId, index, model: 'm', messageCount: 1 })) {
     // drain
   }
@@ -497,6 +503,23 @@ test('settings and key help fold away', async ($, on) => {
   expect(await ui.find({ key: 's0' })).toBeDefined()
 })
 
+test('a turn that ended before the session opened is listed, not spoken', async ($, on) => {
+  const host = fakeHost(on)
+  await $.turn.complete({ answer: 'From before.', durationMs: 1, isAborted: false, turnId: 'old', reason: 'answer' })
+  await settle($)
+  const ui = await $.ui.mount({ plugin: 'speak-pane', surface: 'terminal', component: 'Pane', props: PANE, requestId: 'speak' })
+
+  expect(host.sent).toEqual([])
+  expect(await ui.find({ key: 's0' })).toBeDefined()
+})
+
+test('leaving the session stops its speech', async ($, on) => {
+  const host = fakeHost(on)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'sess', resume: { sessionId: 'sess' } as never })
+
+  expect(host.sent).toEqual([{ mode: 'stop', session: 'sess', label: 'My Project' }])
+})
+
 test('withSessionMuted keeps the newest fifty', () => {
   const many = Array.from({ length: 50 }, (_, i) => `s${i}`)
   expect(withSessionMuted(many, 'new', true)).toEqual([...many.slice(1), 'new'])
@@ -581,6 +604,7 @@ test('a permission prompt is said ahead of other speech when away', async ($, on
 
 test('a long turn ends with All done when away', async ($, on) => {
   const host = fakeHost(on)
+  await $.turn.start({ text: '', turnId: 't9' })
   await $.turn.complete({ answer: 'Fixed it.', durationMs: 45000, isAborted: false, turnId: 't9', reason: 'answer' })
   await settle($)
 
