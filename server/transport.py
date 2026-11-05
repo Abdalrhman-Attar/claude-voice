@@ -64,6 +64,20 @@ def retire_unlocked():
         time.sleep(0.2)
 
 
+def unlocked_running():
+    """Whether a server answers while nobody holds the lock: a copy from before the lock (an old VS
+    Code extension's), which a client replaces with this one."""
+    os.makedirs(HOME, exist_ok=True)
+    with open(LOCK, "a+") as f:
+        if not try_lock(f):
+            return False  # a current server holds it
+    try:
+        connect()[0].close()
+        return True
+    except NotRunning:
+        return False
+
+
 def listen():
     """The server's listening socket, or SystemExit when another server is running."""
     single()

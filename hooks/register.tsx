@@ -48,7 +48,7 @@ const prefs = atom({ plugin: 'speak-pane', key: 'prefs' } as const, DEFAULT_SETT
 const panelAtom = atom({ plugin: 'speak-pane', key: 'panel' } as const, 'list' as Panel)
 
 type Request = {
-  mode: 'reply' | 'play' | 'stop' | 'pause' | 'skip' | 'record'
+  mode: 'reply' | 'play' | 'stop' | 'pause' | 'skip' | 'record' | 'ping'
   reply?: Reply
   sentences?: string[]
   pauses?: number[]
@@ -254,6 +254,8 @@ export const register: Register = on => {
     })
     void $.ui.open({ id: PANE, title: 'Speak' })
     void loadSettings($)
+    // Starts the voice server now (or replaces an outdated one) rather than at the first reply.
+    void send($, { mode: 'ping' }).catch(() => undefined)
     $.clock.every(POLL_MS, () => void poll($))
 
     return next(e)

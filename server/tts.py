@@ -119,6 +119,9 @@ def start_server():
                          stdout=subprocess.DEVNULL, stderr=log, start_new_session=True)
 
 
+if transport.unlocked_running():
+    transport.retire_unlocked()  # an old server: the start below runs this one in its place
+
 try:
     transport.send(request)
 except transport.NotRunning:
