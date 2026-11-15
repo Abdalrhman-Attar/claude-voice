@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Second half of install.sh / install.ps1, run with the voice's own Python environment:
 # models, pronunciation list, the ctrl+x s shortcut and starting the server at login.
+# Uninstall undoes all but the data: it also removes the plugin and stops the server.
 #   install_helper.py install [--agents codex,gemini,cursor,mcp] [--arabic] | uninstall
 #   install_helper.py arabic         adds the Arabic voice (about 700 MB)
 #   install_helper.py connect codex,gemini,cursor,mcp | disconnect codex,gemini,cursor
@@ -175,6 +176,26 @@ def plugin():
     return False
 
 
+def remove_plugin():
+    """Uninstalls the Claude Code plugin and the marketplace setup added for it. Left in place, its
+    Speak pane keeps opening, and its first request starts the server again."""
+    cli = claude_cli()
+    if not cli:
+        print("Claude Code plugin: claude command not found. In Claude Code run:\n"
+              "  /plugin uninstall speak-pane@claude-voice")
+        return False
+    run = lambda *a: subprocess.run([cli, "plugin", *a], capture_output=True, text=True, timeout=180)
+    if "speak-pane" in (run("list").stdout or ""):
+        done = run("uninstall", "speak-pane@claude-voice")
+        if done.returncode != 0:
+            print("Claude Code plugin: could not uninstall automatically:", (done.stderr or done.stdout).strip()[:300])
+            print("  In Claude Code run: /plugin uninstall speak-pane@claude-voice")
+            return False
+        print("Claude Code plugin: uninstalled (open Claude Code sessions keep it until /reload-plugins)")
+    run("marketplace", "remove", "claude-voice")
+    return True
+
+
 def check_audio():
     try:
         import sounddevice  # noqa: F401
@@ -200,6 +221,29 @@ def shortcut():
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
     print("Shortcut: ctrl+x s stops the voice (while the Speak pane is open); /hush works anywhere")
+
+
+def remove_shortcut():
+    """Takes out the binding shortcut() adds, unless ctrl+x s has been given another action since,
+    and the keybindings file too when nothing else is left in it."""
+    path = os.path.expanduser("~/.claude/keybindings.json")
+    try:
+        data = json.load(open(path))
+    except (OSError, ValueError):
+        return
+    blocks = data.get("bindings", [])
+    glob = next((b for b in blocks if b.get("context") == "Global"), None)
+    if glob is None or glob.get("bindings", {}).get("ctrl+x s") != "app:toggleDiffPreSession":
+        return
+    del glob["bindings"]["ctrl+x s"]
+    if not glob["bindings"]:
+        blocks.remove(glob)
+    if not blocks and set(data) <= {"$schema", "$docs", "bindings"}:
+        os.remove(path)
+    else:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    print("Shortcut: ctrl+x s removed")
 
 
 def macos_agent(on):
@@ -295,6 +339,18 @@ def autostart(on):
         print("Login: the voice server starts at login and stops after an idle hour")
 
 
+def stop_server():
+    """Asks a running server to quit. Removing the login item leaves one running (on Windows, or
+    one a client started), and it goes on reading replies from Claude Code's session files."""
+    import transport  # server/transport.py, beside this file
+
+    try:
+        transport.send({"mode": "quit"})
+        print("Voice server: stopped")
+    except transport.NotRunning:
+        pass
+
+
 HOOK = os.path.join(CODE, "agent_hook.py")
 MCP = os.path.join(CODE, "mcp_server.py")
 AGENTS = ("codex", "gemini", "cursor", "mcp")
@@ -347,6 +403,8 @@ def codex(on):
 def gemini(on):
     """Gemini CLI: AfterAgent for replies and Notification for permission prompts."""
     path = os.path.expanduser("~/.gemini/settings.json")
+    if not on and not os.path.exists(path):
+        return  # nothing to disconnect: don't create the file
     data = load_json(path)
     hooks = data.setdefault("hooks", {})
     for name in ("AfterAgent", "Notification"):
@@ -369,6 +427,8 @@ def gemini(on):
 def cursor(on):
     """Cursor (editor and cursor-agent with hooks): afterAgentResponse."""
     path = os.path.expanduser("~/.cursor/hooks.json")
+    if not on and not os.path.exists(path):
+        return  # nothing to disconnect: don't create the file
     data = load_json(path)
     data.setdefault("version", 1)
     hooks = data.setdefault("hooks", {})
@@ -418,6 +478,9 @@ if __name__ == "__main__":
     if args == ["uninstall"]:
         connect(["codex", "gemini", "cursor"], on=False)
         autostart(False)
+        remove_plugin()  # before stopping the server, which the plugin would start again
+        remove_shortcut()
+        stop_server()
         print(f"Start at login removed. Data is left in {HOME} (delete it to free about 350 MB).")
         sys.exit(0)
     os.makedirs(HOME, exist_ok=True)

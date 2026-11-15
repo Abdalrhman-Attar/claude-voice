@@ -14,3 +14,7 @@ Open the **Read Aloud** panel and click **Set up**. It installs everything in on
 Finished Claude Code replies are spoken right away, read from Claude Code's session files. The plugin adds speech while Claude types. Codex, Gemini CLI and Cursor can be connected with the installer in the [repository](https://github.com/Abdalrhman-Attar/claude-voice).
 
 **Arabic:** run **Read Aloud: Add the Arabic voice** from the Command Palette to read Arabic in NVIDIA's MagpieTTS, run locally (about 700 MB). Without it, Arabic uses your system's Arabic voice (Majed on macOS).
+
+## Uninstall
+
+Uninstalling the extension undoes Set up the next time VS Code starts: the voice server stops, and start at login, the Claude Code plugin and the ctrl+x s shortcut are removed. Claude Code sessions that are already open keep the plugin until `/reload-plugins`. If another editor, such as Cursor, still has the extension, the voice is left for it. The data stays: delete `~/.claude/kokoro` to free about 350 MB.

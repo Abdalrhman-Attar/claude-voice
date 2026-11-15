@@ -134,7 +134,8 @@
     "bundle-server": "node scripts/bundle-server.js",
     "compile": "npm run bundle-server && tsc -p .",
     "package": "npm run compile && vsce package --no-dependencies",
-    "test": "npm run compile && node test/run.js"
+    "test": "npm run compile && node test/run.js",
+    "vscode:uninstall": "node ./out/uninstall"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
