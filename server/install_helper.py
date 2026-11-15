@@ -403,6 +403,8 @@ def codex(on):
 def gemini(on):
     """Gemini CLI: AfterAgent for replies and Notification for permission prompts."""
     path = os.path.expanduser("~/.gemini/settings.json")
+    if not on and not os.path.exists(path):
+        return  # nothing to disconnect: don't create the file
     data = load_json(path)
     hooks = data.setdefault("hooks", {})
     for name in ("AfterAgent", "Notification"):
@@ -425,6 +427,8 @@ def gemini(on):
 def cursor(on):
     """Cursor (editor and cursor-agent with hooks): afterAgentResponse."""
     path = os.path.expanduser("~/.cursor/hooks.json")
+    if not on and not os.path.exists(path):
+        return  # nothing to disconnect: don't create the file
     data = load_json(path)
     data.setdefault("version", 1)
     hooks = data.setdefault("hooks", {})

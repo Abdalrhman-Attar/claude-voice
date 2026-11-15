@@ -93,4 +93,9 @@ transport.close(server)
 assert [{k: v for k, v in r.items() if k != "token"} for r in got] == [{"mode": "quit"}], got
 assert not token or got[0]["token"] == token
 helper.stop_server()  # no server now
+
+# Disconnecting agents that were never connected creates none of their files.
+helper.connect(["codex", "gemini", "cursor"], on=False)
+for made in (".codex", ".gemini", ".cursor"):
+    assert not os.path.exists(os.path.join(home, made)), made
 print("install_helper: all checks pass")
