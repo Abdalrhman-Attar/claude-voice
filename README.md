@@ -161,4 +161,4 @@ Changes apply to the next sentence. [`docs/voice-test.md`](docs/voice-test.md) h
 powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall   # Windows
 ```
 
-then `/plugin uninstall speak-pane` and delete `~/.claude/kokoro`.
+It stops the voice server and removes start at login, the Claude Code plugin, the ctrl+x s shortcut and the other agents' hooks. Claude Code sessions that are already open keep the plugin until `/reload-plugins`. The data stays: delete `~/.claude/kokoro` to free about 350 MB.
