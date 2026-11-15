@@ -75,6 +75,8 @@ code --install-extension read-aloud-for-claude-code-*.vsix          # add --prof
 
 It works on its own: **Set up** in the panel installs the voice (fetching Python if needed) and the Claude Code plugin, and finished replies are spoken from Claude Code's session files even without the plugin. Sessions show Claude Code's own titles. `npm test` in `vscode/` runs its integration tests in a real VS Code.
 
+Uninstalling the extension undoes Set up the next time VS Code starts, as [Uninstall](#uninstall) does, unless another editor still has the extension. The data stays in `~/.claude/kokoro`.
+
 ## Other agents
 
 The same voice can read replies from Codex, Gemini CLI and Cursor, and any MCP client can call it. Every agent shares one queue, so they take turns instead of talking over each other, each introduced as "From Codex in my-app" when several are active. Mute, only when away and summaries follow the Speak pane's settings.
